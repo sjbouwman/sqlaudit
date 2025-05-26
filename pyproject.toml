@@ -1,7 +1,7 @@
 [project]
 name = "sqlaudit"
 version = "0.1.1"
-description = ""
+description = "SQLAlchemy extension that provides an easy way to track changes to your database models." 
 authors = [
     {name = "Sander J. Bouwman"}
 ]
