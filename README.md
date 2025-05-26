@@ -117,8 +117,7 @@ We will be doing this in a `startup` function that will be called when the appli
 if __name__ == "__main__":
     Base.metadata.create_all(engine)
 
-    with next(get_db()) as session:
-        register_audit_hooks(session=session)
+    register_audit_hooks()
 ```
 
 ### Step 5: Use the session to make changes
