@@ -17,9 +17,9 @@ def track_table(
     user_id_field: str | None = None,
     table_label: str | None = None,
 ) -> Callable[[type[T]], type[T]]:
-    config = get_audit_config()
 
     def decorator(cls: type[T]) -> type[T]:
+        config = get_audit_config()
         run_preflight(
             cls,
             SQLAuditOptionsBase(
