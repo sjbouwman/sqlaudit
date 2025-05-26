@@ -3,7 +3,6 @@ from typing import TypeVar
 
 from sqlalchemy.orm import DeclarativeBase
 
-
 from sqlaudit.config import get_audit_config
 from sqlaudit.options import SQLAuditOptionsBase
 from sqlaudit.pre_flight import run_preflight
