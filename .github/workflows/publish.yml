@@ -1,3 +1,6 @@
+# This workflow will upload a Python Package to PyPI when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
 name: Upload Python Package
 
 on:
@@ -18,16 +21,14 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Poetry
+      - name: Install build module
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "::add-path::${HOME}/.local/bin"
-
-      - name: Install dependencies
-        run: poetry install --no-root
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build release distributions
-        run: poetry build
+        run: |
+          python -m build
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
@@ -54,6 +55,6 @@ jobs:
           path: dist/
 
       - name: Publish release distributions to PyPI
-        env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
-        run: poetry publish --username __token__ --password $POETRY_PYPI_TOKEN_PYPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
