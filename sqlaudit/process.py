@@ -1,18 +1,17 @@
+import warnings
 from dataclasses import dataclass
 
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
 
-from sqlaudit.exceptions import SQLAuditInvalidRecordIdFieldError
-from sqlaudit.registry import (
-    _audit_model_registry,
-    _get_audit_log_field,
-    get_audit_log_table,
-)
 
-from sqlaudit.config import get_audit_config
-from sqlaudit.utils import add_audit_log, get_user_id_from_instance
+from sqlaudit.config import get_config
+from sqlaudit.registry import audit_model_registry
+
+from sqlaudit.models import SQLAuditLogField, SQLAuditLogTable
+from sqlaudit.utils import add_audit_log
+
 
 
 @dataclass
@@ -24,46 +23,104 @@ class AuditChange:
     new_value: list[str]
 
 
+def _get_audit_table(instance: DeclarativeBase, session: Session):
+    """
+    Retrieves the audit log table for the given instance.
+    If it does not exist, it creates a new one.
+    """
+    metadata = audit_model_registry.get(instance)
+    record_id_field = (
+        metadata.options.record_id_field
+        or metadata.table_model.__mapper__.primary_key[0].name
+    )
+
+    log_table_db = (
+        session.query(SQLAuditLogTable)
+        .filter_by(table_name=metadata.table_model.__tablename__)
+        .first()
+    )
+
+    if not log_table_db:
+        log_table_db = SQLAuditLogTable(
+            table_name=metadata.table_model.__tablename__,
+            record_id_field=record_id_field,
+            label=metadata.options.table_label,
+        )
+        session.add(log_table_db)
+
+    return log_table_db
+
+
+def _get_audit_log_field_from_table(
+    table: SQLAuditLogTable,
+    field: str,
+    session: Session,
+):
+    """
+    Retrieves the audit log field for the given instance and field name.
+    If it does not exist, it creates a new one.
+    """
+
+    if field_dbs := [f for f in table.fields if f.field_name == field]:
+        return field_dbs[0]
+
+    else:
+        field_db = SQLAuditLogField(
+            table_id=table.table_id,
+            field_name=field,
+            table=table,
+        )
+        session.add(field_db)
+
+        return field_db
+
+
 def register_change(
     instance: DeclarativeBase, changes: list[AuditChange], session: Session
 ) -> None:
     """
     Registers the field-level changes of an object into the audit log.
     """
-    config = get_audit_config()
-    assert config.session_factory is not None, "Audit session factory is not set"
+    config = get_config()
+    executing_user_id = config.get_user_id_callback() if config.get_user_id_callback else None
 
-    metadata = _audit_model_registry.get_metadata(model_class=instance.__class__)
-    table_model = metadata.table_model
-    options = metadata.options
+    executing_user_id_str = str(executing_user_id) if executing_user_id else None
+    
 
-    audit_log_table = get_audit_log_table(session, table_model.__tablename__)
-    table_id = audit_log_table.table_id if audit_log_table else None
-    assert table_id is not None, "Audit log table ID is not set"
 
-    record_id = getattr(instance, options.record_id_field, None)
-    if not record_id:
-        raise SQLAuditInvalidRecordIdFieldError(
-            target=instance.__class__, record_id_field=options.record_id_field
+    metadata = audit_model_registry.get(instance)
+    record_id_field = (
+        metadata.options.record_id_field
+        or metadata.table_model.__mapper__.primary_key[0].name
+    )
+
+
+    record_id = getattr(instance, record_id_field, None)
+    if record_id is None:
+        raise ValueError(
+            "Instance %r does not have a value for the record ID field %r."
+            % (instance, record_id_field)
         )
 
+    table_db = _get_audit_table(
+        instance=instance,
+        session=session,
+    )
+
     for change in changes:
-        field_db = _get_audit_log_field(session, table_id, change.field)
-        if not field_db:
-            raise SQLAuditInvalidRecordIdFieldError(
-                target=instance.__class__, record_id_field=change.field
-            )
+        field_db = _get_audit_log_field_from_table(
+            table=table_db,
+            field=change.field,
+            session=session,
+        )
 
         add_audit_log(
-            session,
-            field_id=field_db.field_id,
+            field=field_db,
+            session=session,
             record_id=record_id,
             old_value=change.old_value,
             new_value=change.new_value,
-            user_id=get_user_id_from_instance(
-                instance=instance,
-                user_id_field=options.user_id_field,
-            ),
+            changed_by=executing_user_id_str
         )
 
 
@@ -73,9 +130,12 @@ def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
     """
     changes: list[AuditChange] = []
 
-    entry = _audit_model_registry.get_table_entry(instance.__class__)
-
+    entry = audit_model_registry.get(instance)
     if entry is None:
+        warnings.warn(
+            f"Model {instance.__class__.__name__} is not registered in SQLAudit registry.",
+            category=RuntimeWarning,
+        )
         return changes
 
     tracked_fields = entry.options.tracked_fields

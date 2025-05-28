@@ -1,8 +1,43 @@
+from typing import cast
 from sqlalchemy import inspect
 from sqlalchemy.orm import DeclarativeBase, Session
+from sqlalchemy.sql.schema import ForeignKey
 
-from sqlaudit.config import get_audit_config
-from sqlaudit.registry import _audit_model_registry
+from sqlaudit.models import SQLAuditLog, SQLAuditLogField
+
+from sqlaudit.config import get_config
+
+
+def column_is_foreign_key_of(
+    table: type[DeclarativeBase],
+    column_name: str,
+    foreign_table_name: str,
+    foreign_column_name: str,
+) -> bool:
+    """
+    Check if the specified column in the table has a foreign key constraint.
+
+    Args:
+        table (type[DeclarativeBase]): The SQLAlchemy table model.
+        column_name (str): The name of the column to check.
+
+    Returns:
+        bool: True if the column has a foreign key, False otherwise.
+    """
+    column = getattr(table, column_name)
+
+    foreign_keys: tuple[ForeignKey] = cast(
+        tuple[ForeignKey], getattr(column, "foreign_keys", ())
+    )
+
+    if not foreign_keys:
+        return False
+
+    for fk in foreign_keys:
+        if fk.target_fullname == f"{foreign_table_name}.{foreign_column_name}":
+            return True
+
+    return False
 
 
 def get_primary_keys(table: type[DeclarativeBase]) -> list[str]:
@@ -41,25 +76,37 @@ def get_user_id_from_instance(
 
 def add_audit_log(
     session: Session,
-    field_id: int,
+    field: SQLAuditLogField,
     record_id: str,
     old_value: list[str],
     new_value: list[str],
-    user_id: str | None = None,
+    changed_by: str | None = None,
 ):
     """
-    Adds an audit log entry to the database. 
+    Adds an audit log entry to the database.
     """
-    config = get_audit_config()
-    audit_log_db = _audit_model_registry.base_models.AuditLog(
-        field_id=field_id,
+    config = get_config()
+
+    audit_log_db = SQLAuditLog(
+        field=field,
         record_id=record_id,
         old_value=old_value,
         new_value=new_value,
+        changed_by=changed_by,
     )
 
-    if user_id is not None and config.user_id_column and config.user_model:
-        audit_log_db.user_id = user_id
+    if changed_by is not None:
+        if not config.user_model:
+            raise ValueError(
+                "User model is not set in the audit configuration whilest user_id is provided."
+            )
+
+        # We get the column name for the user ID in the audit log
+        audit_log_user_id_column = (
+            config.user_model_user_id_field or get_primary_keys(config.user_model)[0]
+        )
+
+        setattr(audit_log_db, audit_log_user_id_column, changed_by)
 
     session.add(audit_log_db)
     return audit_log_db

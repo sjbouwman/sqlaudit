@@ -1,91 +1,60 @@
-import datetime
-import logging
-from typing import Annotated
 import uuid
 from collections.abc import Callable, Generator
+from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Engine
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Session as BaseSession
+from sqlalchemy.orm import Session as BaseSession, DeclarativeBase
 
 from sqlaudit.exceptions import SQLAuditConfigError
-from .models import SQLAuditBase
+from sqlaudit.models import SQLAuditBase
 
-type SessionFactory = Callable[[], Generator[BaseSession, None, None]]
-
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+type _SessionFactory = Callable[[], Generator[BaseSession, None, None]]
 
 
-class SQLAuditConfig(BaseModel):
-    engine: Annotated[
-        Engine,
-        Field(
-            description="SQLAlchemy Engine instance used to connect to the database."
-        ),
-    ]
+@dataclass
+class SQLAuditConfig:
+    session_factory: _SessionFactory
+    user_model: type | None = None
+    user_model_user_id_field: str | None = None
+    get_user_id_callback: Callable[[], str | int | uuid.UUID | None] | None = None
 
-    Base: Annotated[
-        type[DeclarativeBase],
-        Field(description="Declarative base class from which all ORM models inherit."),
-    ]
+    def __post_init__(self):
+        if not callable(self.session_factory):
+            raise SQLAuditConfigError(
+                "session_factory must be a callable that returns a Session generator."
+            )
 
-    session_factory: Annotated[
-        SessionFactory,
-        Field(description="Callable that returns a new SQLAlchemy Session instance."),
-    ]
+        try:
+            test_gen = self.session_factory()
+            if not isinstance(test_gen, Generator):
+                raise TypeError
 
-    uuid_factory: Annotated[
-        Callable[[], uuid.UUID],
-        Field(
-            default=uuid.uuid4,
-            description="Callable that generates a UUID for new audit entries.",
-        ),
-    ]
+        except Exception:
+            raise SQLAuditConfigError(
+                "session_factory must return a Generator yielding SQLAlchemy Session objects."
+            )
 
-    timestamp_factory: Annotated[
-        Callable[[], datetime.datetime],
-        Field(
-            default=lambda: datetime.datetime.now(datetime.timezone.utc),
-            description="Callable that generates a UTC timestamp for audit entries.",
-        ),
-    ]
+        if self.user_model is not None:
+            if not issubclass(self.user_model, DeclarativeBase):
+                raise SQLAuditConfigError(
+                    "user_model must be a class (DeclarativeBase) or None."
+                )
 
-    use_autoincrement: Annotated[
-        bool,
-        Field(
-            default=False,
-            description="Whether to use auto-incrementing primary keys for audit log entries.",
-        ),
-    ]
+            if not callable(self.get_user_id_callback):
+                raise SQLAuditConfigError(
+                    "get_user_id_callback must be a callable when user_model is set."
+                )
 
-    default_user_id_column: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="Default column name used to identify the user in audited tables (if applicable).",
-        ),
-    ]
+            if not isinstance(self.user_model_user_id_field, str):
+                raise SQLAuditConfigError(
+                    "user_model_user_id_field must be a string if user_model is set. Received: %s"
+                    % type(self.user_model_user_id_field).__name__
+                )
 
-    user_model: Annotated[
-        type | None,
-        Field(
-            default=None,
-            description="User model class used to look up user-related audit info. Must be a class, not an instance.",
-        ),
-    ]
-
-    user_id_column: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="Name of the column on the user model used as a user identifier (e.g. 'id').",
-        ),
-    ]
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+            if not hasattr(self.user_model, self.user_model_user_id_field):
+                raise SQLAuditConfigError(
+                    "user_model (%s) does not have a field named '%s', which is set as 'user_model_user_id_field'."
+                    % (self.user_model.__name__, self.user_model_user_id_field)
+                )
 
 
 class SQLAuditConfigManager:
@@ -96,14 +65,11 @@ class SQLAuditConfigManager:
         if not isinstance(config, SQLAuditConfig):
             raise SQLAuditConfigError("config must be an instance of SQLAuditConfig.")
 
-        # We have to write the metadata from SQLAuditBase to the users metadata
-        for table_name, table_obj in SQLAuditBase.metadata.tables.items():
-            if table_name not in config.Base.metadata.tables:
-                config.Base.metadata._add_table(
-                    table_name,
-                    table_obj.schema,
-                    table_obj,
-                )
+        # No other validation has to be done here, as SQLAuditConfig already validates itself.
+
+        SQLAuditBase.metadata.create_all(
+            bind=config.session_factory().__next__().get_bind()
+        )
 
         self._config = config
 
@@ -121,69 +87,39 @@ class SQLAuditConfigManager:
 _audit_config = SQLAuditConfigManager()
 
 
-def set_audit_config(
-    engine: Engine,
-    Base: type[DeclarativeBase],
-    session_factory: SessionFactory,
-    uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,
-    timestamp_factory: Callable[[], datetime.datetime] = lambda: datetime.datetime.now(
-        datetime.timezone.utc
-    ),
-    use_autoincrement: bool = False,
-    default_user_id_field: str | None = None,
-    user_model: type | None = None,
-    user_id_field: str | None = None,
-) -> None:
+def has_config() -> bool:
     """
-    This function sets the configuration for SQL audit logging. It is required to be called before any audit operations can be performed.
+    Check if the SQLAudit configuration has been set.
+    Returns:
+        bool: True if the configuration is set, False otherwise.
+    """
+    return _audit_config._config is not None
 
-    Parameters:
-        engine (Engine): SQLAlchemy engine instance.
-        Base (type[DeclarativeBase]): Base class for SQLAlchemy models, this should be the declarative base class used in your application.
-        session_factory (SessionFactory): Factory function for creating sessions.
-        uuid_factory (Callable[[], uuid.UUID], optional): Factory for generating UUIDs. Defaults to uuid.uuid4.
-        timestamp_factory (Callable[[], datetime.datetime], optional): Factory for generating timestamps. Defaults to UTC now.
-        use_autoincrement (bool, optional): Whether to use auto-increment for primary keys. Defaults to False.
-        default_user_id_field (str | None, optional): Default user ID field name for audit tables. Defaults to None.
-        user_model (type | None, optional): User model class for foreign key relationships. Defaults to None.
-        user_id_field (str | None, optional): User ID field name in the user model. Defaults to None.
+
+def set_config(config: SQLAuditConfig) -> None:
+    _audit_config.set_config(config=config)
+
+
+def get_config() -> SQLAuditConfig:
+    """
+    Get the current SQLAudit configuration.
 
     Raises:
-        SQLAuditConfigError: If any parameter is invalid.
+        SQLAuditConfigError: If the configuration has not been set.
     """
-    _audit_config.set_config(
-        SQLAuditConfig(
-            engine=engine,
-            user_model=user_model,
-            Base=Base,
-            user_id_column=user_id_field,
-            uuid_factory=uuid_factory,
-            timestamp_factory=timestamp_factory,
-            use_autoincrement=use_autoincrement,
-            session_factory=session_factory,
-            default_user_id_column=default_user_id_field,
-        )
-    )
-
-
-def get_audit_config() -> SQLAuditConfig:
-    """
-    Get the current audit configuration.
-    """
-    if _audit_config.get_config() is None:
-        raise SQLAuditConfigError(
-            "Please set the audit configuration first using set_audit_config()."
-        )
     return _audit_config.get_config()
 
 
-def get_audit_base() -> type[DeclarativeBase]:
+def clear_config() -> None:
     """
-    Get the base class for audit models.
+    Clear the current SQLAudit configuration.
     """
-    try:
-        return get_audit_config().Base
-    except SQLAuditConfigError:
-        raise RuntimeError(
-            "Audit logging not configured yet. Please call `set_audit_config()` before importing the audit models."
-        )
+    _audit_config._config = None
+
+
+__all__ = [
+    "SQLAuditConfig",
+    "set_config",
+    "get_config",
+    "has_config",
+]

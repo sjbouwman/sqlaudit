@@ -1,45 +1,62 @@
 import datetime
 import uuid
 
-from sqlalchemy import JSON, UUID, DateTime, Integer, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 
-# A custom base class for SQLAlchemy models used in the audit system. After setting up the config, the tables will be automatically inserted into the metdata of the 'users' base class.
 class SQLAuditBase(DeclarativeBase): ...
 
 
-class AuditLogTable(SQLAuditBase):
-    __tablename__ = "SQLAuditLogTables"
-    table_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+class SQLAuditLogTable(SQLAuditBase):
+    __tablename__ = "SQLAuditTables"
+
+    table_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     table_name: Mapped[str] = mapped_column(String, nullable=False)
     record_id_field: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=True)
+    fields: Mapped[list["SQLAuditLogField"]] = relationship(
+        back_populates="table"
+        )
+    
+
+class SQLAuditLogField(SQLAuditBase):
+    __tablename__ = "SQLAuditFields"
+
+    field_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditTables.table_id"))
+    field_name: Mapped[str] = mapped_column(String)
+
+    table: Mapped["SQLAuditLogTable"] = relationship(
+        back_populates="fields",
+    )
+
+    logs: Mapped[list["SQLAuditLog"]] = relationship(
+        back_populates="field",
+    )
 
 
-class AuditLogField(SQLAuditBase):
-    __tablename__ = "SQLAuditLogFields"
 
-    field_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    table_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    field_name: Mapped[str] = mapped_column(String, nullable=False)
-
-
-class AuditLog(SQLAuditBase):
+class SQLAuditLog(SQLAuditBase):
     __tablename__ = "SQLAuditLogs"
 
-    audit_log_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    audit_log_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    field_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    record_id: Mapped[str] = mapped_column(String, nullable=False)
-    old_value: Mapped[JSON] = mapped_column(JSON, nullable=True)
-    new_value: Mapped[JSON] = mapped_column(JSON, nullable=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("SQLAuditFields.field_id"))
+    field: Mapped["SQLAuditLogField"] = relationship(
+        back_populates="logs",
+    )
+    
+    record_id: Mapped[str] = mapped_column(String)
+    old_value: Mapped[JSON | None] = mapped_column(JSON)
+    new_value: Mapped[JSON | None] = mapped_column(JSON)
     timestamp: Mapped[datetime.datetime] = mapped_column(
         DateTime,
-        nullable=False,
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
-
-    user_id: Mapped[str] = mapped_column(String, nullable=True)
+    changed_by: Mapped[str | None] = mapped_column(String, nullable=True)

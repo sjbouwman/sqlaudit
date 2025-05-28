@@ -1,3 +1,3 @@
 import logging
 
-logger = logging.getLogger("sqlaudit")
+logger = logging.getLogger("SQLAudit")

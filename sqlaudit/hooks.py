@@ -4,7 +4,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from sqlaudit.process import AuditChange, get_changes, register_change
-from sqlaudit.registry import _audit_model_registry
+from sqlaudit.registry import audit_model_registry
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +48,22 @@ class AuditChangeBuffer:
 _audit_change_buffer = AuditChangeBuffer()
 
 
-def register_audit_hooks():
+def register_hooks():
     @event.listens_for(Session, "before_flush")
     def collect_audit_changes_before_flush(session: Session, _, _2):
         """
         Set the pending audit logs for the session before flushing. Thus will register all changes. These changes will be processed after the flush.
         """
         for instance in session.dirty | session.new | session.deleted:
-            if instance in _audit_model_registry:
+            if instance in audit_model_registry:
                 _audit_change_buffer.add(
                     instance=instance,
                     changes=get_changes(instance),
                 )
+        
 
-    @event.listens_for(Session, "after_flush")
+
+    @event.listens_for(Session, "after_flush_postexec")
     def commit_audit_changes_after_flush(session: Session, _):
         """
         Process the pending audit logs after the session has been flushed.
