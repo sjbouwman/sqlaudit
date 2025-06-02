@@ -1,11 +1,11 @@
 from typing import cast
+
 from sqlalchemy import inspect
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.sql.schema import ForeignKey
 
-from sqlaudit.models import SQLAuditLog, SQLAuditLogField
-
 from sqlaudit.config import get_config
+from sqlaudit.models import SQLAuditLog, SQLAuditLogField
 
 
 def column_is_foreign_key_of(
@@ -58,14 +58,14 @@ def get_primary_keys(table: type[DeclarativeBase]) -> list[str]:
 
 
 def get_user_id_from_instance(
-    instance: DeclarativeBase, user_id_field: str | None
+    instance: DeclarativeBase, user_id_field: str
 ) -> str | None:
     """
     Extracts the user ID from the given object based on the specified user ID field.
     If the field is not set, returns None.
     """
     if user_id_field is None or not hasattr(instance, user_id_field):
-        return None
+        raise ValueError(f"Instance does not have the user_id field '{user_id_field}'.")
 
     user_id = getattr(instance, user_id_field, None)
     if user_id is None:

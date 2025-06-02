@@ -1,12 +1,8 @@
-import logging
-
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from sqlaudit.process import AuditChange, get_changes, register_change
 from sqlaudit.registry import audit_model_registry
-
-logger = logging.getLogger(__name__)
 
 
 class AuditChangeBuffer:
@@ -43,6 +39,18 @@ class AuditChangeBuffer:
         Iterate over the items in the buffer.
         """
         return iter(self._audit_change_buffer.items())
+    
+    def __len__(self):
+        """
+        Return the number of items in the buffer.
+        """
+        return len(self._audit_change_buffer)
+    
+    def __contains__(self, instance: DeclarativeBase):
+        """
+        Check if the buffer contains changes for a specific instance.
+        """
+        return instance in self._audit_change_buffer
 
 
 _audit_change_buffer = AuditChangeBuffer()

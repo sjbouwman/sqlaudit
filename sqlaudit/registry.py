@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import DeclarativeBase
 
+from .exceptions import SQLAuditTableAlreadyRegisteredError
 from sqlaudit.logger import logger
 
 
@@ -59,7 +60,7 @@ class AuditRegistry:
         """
         table_name = table_model.__tablename__
         if table_name in self._registry:
-            raise ValueError(f"Table {table_name} is already registered for auditing.")
+            raise SQLAuditTableAlreadyRegisteredError(table_name)
 
         if not issubclass(table_model, DeclarativeBase):
             raise TypeError(

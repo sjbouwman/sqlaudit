@@ -5,13 +5,10 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
 
-
 from sqlaudit.config import get_config
-from sqlaudit.registry import audit_model_registry
-
 from sqlaudit.models import SQLAuditLogField, SQLAuditLogTable
+from sqlaudit.registry import audit_model_registry
 from sqlaudit.utils import add_audit_log
-
 
 
 @dataclass
@@ -55,24 +52,38 @@ def _get_audit_log_field_from_table(
     table: SQLAuditLogTable,
     field: str,
     session: Session,
-):
+) -> SQLAuditLogField:
     """
     Retrieves the audit log field for the given instance and field name.
     If it does not exist, it creates a new one.
     """
+    for obj in session.new:
+        if (
+            isinstance(obj, SQLAuditLogField)
+            and obj.table_id == table.table_id
+            and obj.field_name == field
+        ):
+            return obj
 
-    if field_dbs := [f for f in table.fields if f.field_name == field]:
-        return field_dbs[0]
+    # Query the database directly to check if the field exists
+    field_db = (
+        session.query(SQLAuditLogField)
+        .filter_by(table_id=table.table_id, field_name=field)
+        .first()
+    )
 
-    else:
-        field_db = SQLAuditLogField(
-            table_id=table.table_id,
-            field_name=field,
-            table=table,
-        )
-        session.add(field_db)
-
+    if field_db:
         return field_db
+
+
+    field_db = SQLAuditLogField(
+        table_id=table.table_id,
+        field_name=field,
+        table=table,
+    )
+    session.add(field_db)
+
+    return field_db
 
 
 def register_change(
@@ -82,18 +93,17 @@ def register_change(
     Registers the field-level changes of an object into the audit log.
     """
     config = get_config()
-    executing_user_id = config.get_user_id_callback() if config.get_user_id_callback else None
 
+    executing_user_id = (
+        config.get_user_id_callback() if config.get_user_id_callback else None
+    )
     executing_user_id_str = str(executing_user_id) if executing_user_id else None
-    
-
 
     metadata = audit_model_registry.get(instance)
     record_id_field = (
         metadata.options.record_id_field
         or metadata.table_model.__mapper__.primary_key[0].name
     )
-
 
     record_id = getattr(instance, record_id_field, None)
     if record_id is None:
@@ -120,7 +130,7 @@ def register_change(
             record_id=record_id,
             old_value=change.old_value,
             new_value=change.new_value,
-            changed_by=executing_user_id_str
+            changed_by=executing_user_id_str,
         )
 
 
