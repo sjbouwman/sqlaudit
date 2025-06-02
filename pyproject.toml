@@ -1,6 +1,6 @@
 [project]
 name = "sqlaudit"
-version = "0.3.0"
+version = "0.3.1"
 description = "SQLAlchemy extension that provides an easy way to track changes to your database models." 
 authors = [
     {name = "Sander J. Bouwman"}
@@ -12,6 +12,11 @@ dependencies = [
     "pydantic (>=2.11.5,<3.0.0)",
     "tzlocal (>=5.3.1,<6.0.0)",
 ]
+
+[project.urls]
+Repository = "https://github.com/SanderJBouwman/sqlaudit"
+Issues = "https://github.com/SanderJBouwman/sqlaudit/issues"
+Changelog = "https://github.com/SanderJBouwman/sqlaudit/releases"
 
 [tool.poetry]
 packages = [{ include = "sqlaudit" }]

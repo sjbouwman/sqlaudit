@@ -63,12 +63,13 @@ class User(Base):
 
 The configuration for `SQLAudit` is done using the `SQLAuditConfig` class. We create a configuration object that specifies the session factory, user model, and a callback to get the user ID from the instance.
 
-We need four things to configure SQLAudit:
+We need five things to configure SQLAudit:
 
 1. `session_factory`: A session factory that returns a SQLAlchemy session.
 2. `user_model`: A user model that represents the user who made the changes.
 3. `user_model_user_id_field`: A field in the user model that represents the user ID.
 4. `get_user_id_callback`: A callback function that retrieves the user ID from the instance. In this example, we will use a mock function to get the user ID, however in a real application, you could for example use contextvars.
+5. `time_zone`: (optional but strongly recommended) A string specifying the time zone for timestamps. If omitted, it defaults to your system's local time zone. Setting this ensures consistent querying and display of timestamps across different environments. E.g. "UTC" or "Europe/Kiev" see [list of time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
 ```python
 from sqlaudit.config import SQLAuditConfig, set_config
@@ -91,6 +92,7 @@ config = SQLAuditConfig(
     user_model=User,
     user_model_user_id_field="user_id",
     get_user_id_callback=get_user_id_from_instance,
+    time_zone="Europe/Kiev",  # Optional, but recommended to set a time zone
 )
 
 set_config(config) # We set the global configuration for SQLAudit
