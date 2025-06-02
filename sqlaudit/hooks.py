@@ -1,3 +1,4 @@
+import datetime
 from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -77,10 +78,12 @@ def register_hooks():
         Process the pending audit logs after the session has been flushed.
         This will register the changes in the audit log.
         """
+        timestamp = datetime.datetime.now(datetime.UTC)
         for instance, changes in _audit_change_buffer:
             register_change(
                 session=session,
                 instance=instance,
                 changes=changes,
+                timestamp=timestamp,
             )
         _audit_change_buffer.clear()

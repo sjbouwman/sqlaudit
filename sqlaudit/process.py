@@ -1,3 +1,4 @@
+import datetime
 import json
 from typing import Any
 from collections.abc import Iterable
@@ -93,7 +94,7 @@ def _get_audit_log_field_from_table(
 
 
 def register_change(
-    instance: DeclarativeBase, changes: list[AuditChange], session: Session
+    instance: DeclarativeBase, changes: list[AuditChange], session: Session, timestamp: datetime.datetime
 ) -> None:
     """
     Registers the field-level changes of an object into the audit log.
@@ -137,6 +138,7 @@ def register_change(
             old_value=change.old_value,
             new_value=change.new_value,
             changed_by=executing_user_id_str,
+            timestamp=timestamp,
         )
 
 

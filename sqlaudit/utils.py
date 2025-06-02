@@ -1,3 +1,4 @@
+import datetime
 from typing import cast
 
 from sqlalchemy import inspect
@@ -80,6 +81,7 @@ def add_audit_log(
     record_id: str,
     old_value: list[str],
     new_value: list[str],
+    timestamp: datetime.datetime,
     changed_by: str | None = None,
 ):
     """
@@ -92,6 +94,7 @@ def add_audit_log(
         record_id=record_id,
         old_value=old_value,
         new_value=new_value,
+        timestamp=timestamp,
         changed_by=changed_by,
     )
 
