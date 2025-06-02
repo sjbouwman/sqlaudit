@@ -144,8 +144,7 @@ def _normalize_datetime_range(
     invalid_tz_parameters: list[str] = []
     if start_date:
         if start_date.tzinfo is None:
-            if config.time_zone is None:
-                invalid_tz_parameters.append("start_date")
+            invalid_tz_parameters.append("start_date")
 
             start_date = start_date.replace(tzinfo=config._user_tz)
 
@@ -154,8 +153,7 @@ def _normalize_datetime_range(
 
     if end_date:
         if end_date.tzinfo is None:
-            if config.time_zone is None:
-                invalid_tz_parameters.append("end_date")
+            invalid_tz_parameters.append("end_date")
 
             end_date = end_date.replace(tzinfo=config._user_tz)
 
@@ -164,9 +162,9 @@ def _normalize_datetime_range(
 
     if invalid_tz_parameters:
         warnings.warn(
-            f"The following parameters were not timezone-aware: {', '.join(invalid_tz_parameters)}. "
+            f"The following parameters were timezone naive: {', '.join(invalid_tz_parameters)}. "
             "They have been assumed to be in the system timezone and converted to UTC. "
-            "For accurate results, explicitly provide a timezone in the SQLAuditConfig (time_zone) or use timezone aware datetime objects.",
+            "For accurate results, explicitly provide a timezone aware datetime objects.",
             UserWarning,
         )
 
@@ -174,7 +172,7 @@ def _normalize_datetime_range(
         raise ValueError(
             "start_date cannot be after end_date. Please check the provided date range."
         )
-    
+
     return start_date, end_date
 
 

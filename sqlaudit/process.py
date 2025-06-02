@@ -1,6 +1,10 @@
+import json
+from typing import Any
+from collections.abc import Iterable
+import uuid
 import warnings
-from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
@@ -11,13 +15,16 @@ from sqlaudit.registry import audit_model_registry
 from sqlaudit.utils import add_audit_log
 
 
-@dataclass
-class AuditChange:
+class AuditChange(BaseModel):
     """Represents a field change for auditing."""
 
     field: str
     old_value: list[str]
     new_value: list[str]
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
 
 
 def _get_audit_table(instance: DeclarativeBase, session: Session):
@@ -74,7 +81,6 @@ def _get_audit_log_field_from_table(
 
     if field_db:
         return field_db
-
 
     field_db = SQLAuditLogField(
         table_id=table.table_id,
@@ -134,6 +140,36 @@ def register_change(
         )
 
 
+def _audit_changes_values_encoder(values: Iterable[Any]) -> list[str]:
+    """
+    Encodes the values for the audit log.
+    Converts all values to strings.
+    """
+    if not isinstance(values, Iterable) or isinstance(values, (str, bytes)):
+        raise TypeError(f"Expected an iterable of values, got {type(values).__name__} instead.")
+
+    encoded = []
+
+    for value in values:
+        try:
+            if isinstance(value, (str, int, float, uuid.UUID)):
+                encoded.append(str(value))
+
+            elif isinstance(value, (list, tuple, dict)):
+                encoded.append(json.dumps(value, default=str))
+
+            else:
+                encoded.append(str(value))
+
+        except Exception as e:
+            warnings.warn(
+                f"Could not encode value {value!r} of type {type(value).__name__}: {e}",
+                category=RuntimeWarning,
+            )
+
+    return encoded
+
+
 def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
     """
     Detects changes to tracked fields of the given object and registers them in the audit log.
@@ -164,7 +200,11 @@ def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
 
         if old_state != new_state:
             changes.append(
-                AuditChange(field=field, old_value=old_state, new_value=new_state)
+                AuditChange(
+                    field=field,
+                    old_value=_audit_changes_values_encoder(old_state),
+                    new_value=_audit_changes_values_encoder(new_state),
+                )
             )
 
     return changes

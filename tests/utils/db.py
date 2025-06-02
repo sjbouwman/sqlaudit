@@ -1,7 +1,6 @@
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 
-
-def create_user_model(Base):
+def create_user_model(Base: type[DeclarativeBase]) -> type:
     """Helper function to create the User model."""
 
     class User(Base):

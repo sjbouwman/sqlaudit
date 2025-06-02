@@ -145,7 +145,7 @@ def test_faulty_config_with_user_incorrect_field(SessionLocal):
             session_factory=lambda: get_db(SessionLocal),
             user_model=User,
             user_model_user_id_field="incorrect_field",  # This field does not exist
-            get_user_id_callback=lambda: get_user_id_from_instance(user),
+            get_user_id_callback=lambda: user.user_id,  # type: ignore
         )
 def test_faulty_config_with_uncallable_session_factory(SessionLocal):
     """

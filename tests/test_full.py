@@ -1,8 +1,10 @@
 import datetime
-import zoneinfo
+import uuid
+
 import pytest
 from sqlalchemy import ForeignKey, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from tzlocal import get_localzone, get_localzone_name
 
 from sqlaudit.config import (
     SQLAuditConfig,
@@ -65,12 +67,13 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
     )
     class Customer(Base):
         __tablename__ = "customer"
-        id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+        id: Mapped[str] = mapped_column(
+            default=lambda: str(uuid.uuid4()), primary_key=True
+        )
         name: Mapped[str] = mapped_column()
         email: Mapped[str] = mapped_column()
         created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
 
-    # Set up the SQLAuditConfig
     config = SQLAuditConfig(
         session_factory=lambda: get_db(SessionLocal),
         user_model=User,
@@ -117,14 +120,13 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
 
         # At this point, the audit change buffer should have collected changes
 
+        tz = get_localzone()
         changes = get_resource_changes(
-            Customer, 
+            Customer,
             filter_resource_ids=[customer2.id, customer.id],
-
-            # We have to set the filter_date_range to a recent time and also make clear that we host in Amsterdam
             filter_date_range=(
-                datetime.datetime.now() + datetime.timedelta(hours=-1),
-                datetime.datetime.now()
+                datetime.datetime.now(tz=tz) + datetime.timedelta(hours=-1),
+                datetime.datetime.now(tz=tz),
             ),
             limit=6,
             offset=0,
