@@ -1,7 +1,9 @@
 import uuid
+from tzlocal import get_localzone
+
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
-
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session as BaseSession, DeclarativeBase
 
 from sqlaudit.exceptions import SQLAuditConfigError
@@ -16,6 +18,9 @@ class SQLAuditConfig:
     user_model: type | None = None
     user_model_user_id_field: str | None = None
     get_user_id_callback: Callable[[], str | int | uuid.UUID | None] | None = None
+    time_zone: str | None = None
+
+    _user_tz: ZoneInfo | None = None
 
     def __post_init__(self):
         if not callable(self.session_factory):
@@ -55,6 +60,22 @@ class SQLAuditConfig:
                     "user_model (%s) does not have a field named '%s', which is set as 'user_model_user_id_field'."
                     % (self.user_model.__name__, self.user_model_user_id_field)
                 )
+
+        if self.time_zone is not None and not isinstance(self.time_zone, str):
+            raise SQLAuditConfigError(
+                "time_zone must be a string or None. Received: %s"
+                % type(self.time_zone).__name__
+            )
+
+        if self.time_zone is not None:
+            try:
+                self._user_tz = ZoneInfo(self.time_zone)
+            except Exception as e:
+                raise SQLAuditConfigError(
+                    f"Invalid time zone: {self.time_zone}. Error: {e}"
+                )
+        else:
+            self._user_tz = get_localzone()
 
 
 class SQLAuditConfigManager:

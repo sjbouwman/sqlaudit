@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy import JSON, TIMESTAMP, ForeignKey, String
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -20,10 +20,8 @@ class SQLAuditLogTable(SQLAuditBase):
     table_name: Mapped[str] = mapped_column(String, nullable=False)
     record_id_field: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=True)
-    fields: Mapped[list["SQLAuditLogField"]] = relationship(
-        back_populates="table"
-        )
-    
+    fields: Mapped[list["SQLAuditLogField"]] = relationship(back_populates="table")
+
 
 class SQLAuditLogField(SQLAuditBase):
     __tablename__ = "SQLAuditFields"
@@ -41,7 +39,6 @@ class SQLAuditLogField(SQLAuditBase):
     )
 
 
-
 class SQLAuditLog(SQLAuditBase):
     __tablename__ = "SQLAuditLogs"
 
@@ -51,12 +48,12 @@ class SQLAuditLog(SQLAuditBase):
     field: Mapped["SQLAuditLogField"] = relationship(
         back_populates="logs",
     )
-    
+
     record_id: Mapped[str] = mapped_column(String)
     old_value: Mapped[JSON | None] = mapped_column(JSON)
     new_value: Mapped[JSON | None] = mapped_column(JSON)
     timestamp: Mapped[datetime.datetime] = mapped_column(
-        DateTime,
+        TIMESTAMP,
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
     changed_by: Mapped[str | None] = mapped_column(String, nullable=True)
