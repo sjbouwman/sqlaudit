@@ -92,8 +92,8 @@ def add_audit_log(
     audit_log_db = SQLAuditLog(
         field=field,
         record_id=record_id,
-        old_value=old_value,
-        new_value=new_value,
+        old_value=old_value or None,
+        new_value=new_value or None,
         timestamp=timestamp,
         changed_by=changed_by,
     )
