@@ -4,7 +4,7 @@ SQLAudit is a SQLAlchemy extension that provides structured auditing for ORM mod
 It is designed to work with SQLAlchemy's ORM and provides a simple way to track changes to your models without having to write custom code for each model. SQLAudit only requires you to decorate your models with the `@track_table` decorator, and it will automatically track changes to the specified fields.
 
 ```python
-@track_table(tracked_fields=["name", "email", "user_id"])
+@track_table(tracked_fields=["name", "email", "created_by_user_id"])
 class Customer(Base):
     __tablename__ = "customers"
 
@@ -13,7 +13,7 @@ class Customer(Base):
     )
     name: Mapped[str] = mapped_column(String)
     email: Mapped[str] = mapped_column(String)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.user_id"))
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"))
 ```
 
 ## Notice  
