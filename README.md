@@ -1,7 +1,6 @@
 # SQLAudit
 
-`SQLAudit` is a SQLAlchemy extension that provides an easy way to track changes to your database models. It automatically creates an audit trail of changes made to your models, including the user who made the change, the timestamp of the change.
-
+SQLAudit is a SQLAlchemy extension that provides structured auditing for ORM models. It automatically records changes to specified fields, including timestamps and the responsible user, with minimal configuration.
 It is designed to work with SQLAlchemy's ORM and provides a simple way to track changes to your models without having to write custom code for each model. SQLAudit only requires you to decorate your models with the `@track_table` decorator, and it will automatically track changes to the specified fields.
 
 ```python
