@@ -1,7 +1,8 @@
-from sqlalchemy import ForeignKey, Integer, String, create_engine
+from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from sqlaudit.config import SQLAuditConfig, set_config
+from sqlaudit.context import AuditContextManager
 from sqlaudit.decorators import track_table
 from sqlaudit.hooks import register_hooks
 from sqlaudit.retrieval import get_resource_changes
@@ -37,25 +38,17 @@ class Base(DeclarativeBase):
 
 # Define the User model
 class User(Base):
-    """
-    User model representing users in the system.
-    """
-
     __tablename__ = "users"
     user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    # Add more columns as needed
-
+    username: Mapped[str] = mapped_column(String, nullable=False)
 
 # Create a user instance
-user = User()
+user = User(username="jdoe")
 
 
-def get_user_id_from_instance() -> int:
-    """
-    Returns the user_id from the instance.
-    This function is used to retrieve the user ID for auditing purposes.
-    """
-    return user.user_id
+def mocked_user_id_retrieval() -> int:
+    """Mocked function to return the current user ID for audit tracking."""
+    return 1
 
 
 # Set the global audit configuration
@@ -63,17 +56,26 @@ config = SQLAuditConfig(
     session_factory=get_db,
     user_model=User,
     user_model_user_id_field="user_id",
-    get_user_id_callback=get_user_id_from_instance,
+    get_user_id_callback=mocked_user_id_retrieval,
 )
-set_config(config)
 
+# We set the configuration and register hooks for auditing
+set_config(config)
+register_hooks()
 
 # Define the Customer model with tracked fields for auditing
-@track_table(tracked_fields=["name", "email", "user_id"], table_label="Customer")
+@track_table(tracked_fields=["name", "email", "user_id", "age", "data", "is_active"], table_label="Customer")
 class Customer(Base):
     """
     Customer model representing customers in the system.
-    This model is tracked for changes in the specified fields.
+    
+    For demonstration purposes we include a some basic data types such as:
+    - Integer
+    - String
+    - ForeignKey
+    - JSON
+    - Boolean
+    This model is used to demonstrate the basic functionality of SQLAudit.
     """
 
     __tablename__ = "customers"
@@ -83,66 +85,60 @@ class Customer(Base):
     )
     name: Mapped[str] = mapped_column(String)
     email: Mapped[str] = mapped_column(String)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
-
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True) 
+    is_active: Mapped[bool] = mapped_column(default=True)
 
 if __name__ == "__main__":
     # Create all tables in the database
     Base.metadata.create_all(engine)
 
+    # Set up audit hooks before any tracked operations
+    register_hooks()
+
     # Get a database session
     with next(get_db()) as session:
-        # Register hooks for auditing
-        register_hooks()
-
         # Add the user to the session and commit
+        print("=== Adding mock user ===")
         session.add(user)
         session.commit()
 
-        # Create and add a new customer
-        new_customer = Customer(
-            name="John Doe", email="jdoe@example.com", user_id=user.user_id
-        )
+        def add_customer(session, name, email, user_id, **kwargs):
+            customer = Customer(name=name, email=email, user_id=user_id, **kwargs)
+            session.add(customer)
+            session.commit()
+            print(
+                f"Added customer {customer.customer_id} with name '{customer.name}' and email '{customer.email}'."
+            )
+            return customer
 
-        session.add(new_customer)
+        print("\n=== Adding first customer (John Doe) ===")
+        customer1 = add_customer(session, "John Doe", "jdoe@example.com", user.user_id)
+
+        print("\n=== Adding second customer (Jane Doe) ===")
+        customer2 = add_customer(session, "Jane Doe", "jane@example.com", user.user_id)
+
+        # Modify customer with auditing context
+        print("\n=== Modifying Jane Doe with AuditContextManager ===")
+        with AuditContextManager(reason="blabla", impersonated_by="1"):
+            customer2.email = "jane2@example.com"
+            customer2.age = 30
+            customer2.data = {"preferences": {"newsletter": True}}
+            customer2.is_active = False
+            session.flush()
+
+        session.refresh(customer2)
+        customer2.name = "Jane Smith"
         session.commit()
+        print(f"Updated customer {customer2.customer_id} name to '{customer2.name}'.")
 
-        print(
-            f"Customer {new_customer.customer_id} added with name {new_customer.name} and email {new_customer.email}."
-        )
-
-        # Check if the customer is in the database
-        customer = (
-            session.query(Customer)
-            .filter_by(customer_id=new_customer.customer_id)
-            .first()
-        )
-
-        # Create and add another customer
-        new_customer2 = Customer(
-            name="Jane Doe", email="jane@example.com", user_id=user.user_id
-        )
-
-        session.add(new_customer2)
-        session.commit()
-
-        print(
-            f"Customer {new_customer2.customer_id} added with name {new_customer2.name} and email {new_customer2.email}."
-        )
-
-        # Refresh the session and update the customer's name so we have some more data to track
-        session.refresh(new_customer2)
-        new_customer2.name = "Jane Smith"
-        session.commit()
-
-        # Retrieve and print changes for the customers
+        print("\n=== Retrieving audit trail for Jane Smith ===")
         changes = get_resource_changes(
             model_class=Customer,
             session=session,
-            filter_resource_ids=new_customer2.customer_id,
+            filter_resource_ids=customer2.customer_id,
         )
 
         for change in changes:
-            print(
-                f"FIELD: '{change.field_name}' CHANGED AT {str(change.timestamp)} TO {change.new_value} (OLD: {change.old_value}) BY USER ID {change.changed_by}"
-            )
+            print(change.model_dump_json(indent=4) + "\n")

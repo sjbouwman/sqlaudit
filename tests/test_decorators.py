@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, mapped_column, Mapped
 
 from sqlaudit.config import (
-    clear_config,
+    _clear_config,
 )
 from sqlaudit.decorators import track_table
 
@@ -24,7 +24,7 @@ def test_decorator(SessionLocal: sessionmaker):
     """
 
     # Clear any existing configuration
-    clear_config()
+    _clear_config()
 
     # Create a user model
     class Base(DeclarativeBase):
@@ -72,17 +72,17 @@ def test_decorator_with_wrong_user_id_field_type(SessionLocal: sessionmaker):
             id: Mapped[int] = mapped_column(primary_key=True)
             name: Mapped[str] = mapped_column()
 
-def test_decorator_with_wrong_record_id_field_type(SessionLocal: sessionmaker):
+def test_decorator_with_wrong_resource_id_field_type(SessionLocal: sessionmaker):
     """
-    Test the SQLAudit decorators with incorrect record_id_field type.
-    This test checks if the decorator raises an error when record_id_field is not a string.
+    Test the SQLAudit decorators with incorrect resource_id_field type.
+    This test checks if the decorator raises an error when resource_id_field is not a string.
     """
 
     class Base(DeclarativeBase):
         pass
 
     with pytest.raises(TypeError):
-        @track_table(tracked_fields=["name"], record_id_field=123)  # type: ignore
+        @track_table(tracked_fields=["name"], resource_id_field=123)  # type: ignore
         class Customer(Base):
             __tablename__ = "customer"
             id: Mapped[int] = mapped_column(primary_key=True)

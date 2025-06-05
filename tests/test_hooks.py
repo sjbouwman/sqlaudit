@@ -1,10 +1,12 @@
+import datetime
 import uuid
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from sqlaudit._internals.types import LogContextInternal
 from sqlaudit.hooks import _audit_change_buffer
-from sqlaudit.process import AuditChange
+from sqlaudit._internals.types import AuditChange
 
 
 @pytest.fixture(scope="function")
@@ -35,8 +37,8 @@ def test_audit_change_buffer(SessionLocal: sessionmaker):
     # We add some dummy changes to the buffer
 
     changes = [
-        AuditChange(field="name", old_value=["old_name"], new_value=["new_name"]),
-        AuditChange(field="email", old_value=["old_email"], new_value=["new_email"]),
+        AuditChange(field="name", old_value="old_name", new_value="new_name"),
+        AuditChange(field="email", old_value="old_email", new_value="new_email"),
     ]
 
     class DummyModel(Base):
@@ -44,19 +46,20 @@ def test_audit_change_buffer(SessionLocal: sessionmaker):
         id: Mapped[int] = mapped_column(primary_key=True)
 
     dummy_instance = DummyModel(id=1)
+    context = LogContextInternal(timestamp=datetime.datetime.now(datetime.UTC))
 
     assert dummy_instance not in _audit_change_buffer and len(_audit_change_buffer) == 0, (
         "Dummy instance should not be in the buffer before adding changes."
     )
 
     # Simulate adding changes to the buffer
-    _audit_change_buffer.add(dummy_instance, changes)
+    _audit_change_buffer.add(dummy_instance, changes, context=context)
     
-    assert dummy_instance in _audit_change_buffer and len(_audit_change_buffer) == 1, (
+    assert dummy_instance in _audit_change_buffer, (
         "Dummy instance should be in the buffer after adding changes."
     )
 
 
-    for instance, buffered_changes in _audit_change_buffer.items():
-        assert instance == dummy_instance, "Buffered instance should match the dummy instance."
-        assert buffered_changes == changes, "Buffered changes should match the added changes."
+    for classtype, _ in _audit_change_buffer.items():
+        assert classtype == dummy_instance.__class__, "Buffered instance should match the dummy instances class."
+

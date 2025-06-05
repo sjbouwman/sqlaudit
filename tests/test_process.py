@@ -39,7 +39,7 @@ def test_audit_change_encoder():
 
     encoded_changes = _audit_changes_values_encoder(changes)
 
-    assert isinstance(encoded_changes, list), "Encoded changes should be a list."
+    assert isinstance(encoded_changes, str), "Encoded changes should be a list."
     assert all(isinstance(change, str) for change in encoded_changes), (
         "All encoded changes should be strings."
     )

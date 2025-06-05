@@ -84,3 +84,13 @@ class SQLAuditTableAlreadyRegisteredError(Exception):
         self.table_name = table_name
         self.name = "SQLAuditTableAlreadyRegisteredError"
         self.description = "The table is already registered for auditing."
+
+
+class SQLAuditUnsupportedDataTypeError(Exception):
+    """Exception raised when an field is tracked which has an unsupported data type."""
+    default_message = "The field has an unsupported data type for auditing. "
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or self.default_message)
+        self.message = message or self.default_message 
+    

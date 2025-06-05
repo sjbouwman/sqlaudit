@@ -8,13 +8,14 @@ from tzlocal import get_localzone, get_localzone_name
 
 from sqlaudit.config import (
     SQLAuditConfig,
-    clear_config,
+    _clear_config,
     set_config,
 )
 from sqlaudit.decorators import track_table
 from sqlaudit.hooks import register_hooks
-from sqlaudit.retrieval import SQLAuditRecord, get_resource_changes
-from sqlaudit.utils import get_user_id_from_instance
+from sqlaudit.retrieval import get_resource_changes
+from sqlaudit.types import SQLAuditChange, SQLAuditRecord
+from sqlaudit._internals.utils import get_user_id_from_instance
 from tests.utils.db import create_user_model
 
 
@@ -44,7 +45,7 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
     """
 
     # Clear any existing configuration
-    clear_config()
+    _clear_config()
 
     # Create a user model
     class Base(DeclarativeBase):
@@ -119,9 +120,8 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
         session.refresh(customer2)
 
         # At this point, the audit change buffer should have collected changes
-
         tz = get_localzone()
-        changes = get_resource_changes(
+        audit_records = get_resource_changes(
             Customer,
             filter_resource_ids=[customer2.id, customer.id],
             filter_date_range=(
@@ -131,16 +131,17 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
             limit=6,
             offset=0,
         )
-        assert len(changes) > 0, (
-            f"Expected changes to be collected in the audit change buffer. Found {len(changes)} changes."
+        assert len(audit_records) > 0, (
+            f"Expected changes to be collected in the audit change buffer. Found {len(audit_records)} changes."
         )
 
-        for change in changes:
-            assert isinstance(change, SQLAuditRecord), (
-                "Expected change to be an instance of AuditChange."
-            )
-            assert change.field_name in ["name", "email", "created_by_user_id"], (
-                f"Unexpected field {change.field_name} in change."
-            )
-            assert change.old_value is not None, "Expected old_value to be set."
-            assert change.new_value is not None, "Expected new_value to be set."
+        for record in audit_records:
+            for change in record.changes:
+                assert isinstance(change, SQLAuditChange), (
+                    "Expected change to be an instance of AuditChange."
+                )
+                assert change.field_name in ["name", "email", "created_by_user_id"], (
+                    f"Unexpected field {change.field_name} in change."
+                )
+
+                

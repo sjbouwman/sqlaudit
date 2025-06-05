@@ -7,13 +7,24 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session as BaseSession, DeclarativeBase
 
 from sqlaudit.exceptions import SQLAuditConfigError
-from sqlaudit.models import SQLAuditBase
+from sqlaudit._internals.models import SQLAuditBase
 
 type _SessionFactory = Callable[[], Generator[BaseSession, None, None]]
 
 
 @dataclass
 class SQLAuditConfig:
+    """
+    Configuration class for SQLAudit.
+
+    Attributes:
+        session_factory (Callable): A callable returning a generator yielding SQLAlchemy `Session` objects.
+        user_model (type | None): The SQLAlchemy model representing users (must inherit from `DeclarativeBase`), or None if user tracking is not needed.
+        user_model_user_id_field (str | None): The name of the field on the `user_model` that stores the user ID.
+        get_user_id_callback (Callable | None): A callable returning the current user's ID (str, int, UUID), or None.
+        _user_tz (ZoneInfo | None): Automatically set to the local timezone.
+    """
+
     session_factory: _SessionFactory
     user_model: type | None = None
     user_model_user_id_field: str | None = None
@@ -59,11 +70,17 @@ class SQLAuditConfig:
                     "user_model (%s) does not have a field named '%s', which is set as 'user_model_user_id_field'."
                     % (self.user_model.__name__, self.user_model_user_id_field)
                 )
-            
+
         self._user_tz = get_localzone()
 
 
-class SQLAuditConfigManager:
+class _SQLAuditConfigManager:
+    """
+    Manages the global configuration for SQLAudit.
+
+    Responsible for storing the configuration, validating it, and initializing the audit database tables.
+    """
+
     def __init__(self) -> None:
         self._config: SQLAuditConfig | None = None
 
@@ -73,6 +90,7 @@ class SQLAuditConfigManager:
 
         # No other validation has to be done here, as SQLAuditConfig already validates itself.
 
+        # We create the audit table if it does not exist.
         SQLAuditBase.metadata.create_all(
             bind=config.session_factory().__next__().get_bind()
         )
@@ -90,7 +108,7 @@ class SQLAuditConfigManager:
         return f"SQLAuditConfigManager(config={self._config})"
 
 
-_audit_config = SQLAuditConfigManager()
+_audit_config = _SQLAuditConfigManager()
 
 
 def has_config() -> bool:
@@ -103,22 +121,37 @@ def has_config() -> bool:
 
 
 def set_config(config: SQLAuditConfig) -> None:
+    """
+    Set the global SQLAudit configuration.
+
+    This function should be called once during application startup.
+
+    Args:
+        config (SQLAuditConfig): The configuration object.
+    """
     _audit_config.set_config(config=config)
 
 
 def get_config() -> SQLAuditConfig:
     """
-    Get the current SQLAudit configuration.
+    Get the current global SQLAudit configuration.
+
+    Returns:
+        SQLAuditConfig: The active configuration object.
 
     Raises:
-        SQLAuditConfigError: If the configuration has not been set.
+        SQLAuditConfigError: If no configuration has been set.
     """
     return _audit_config.get_config()
 
 
-def clear_config() -> None:
+def _clear_config() -> None:
     """
     Clear the current SQLAudit configuration.
+
+    Warning:
+        This should only be used in testing or application shutdown. 
+        Once cleared, `get_config()` will raise until a new config is set.
     """
     _audit_config._config = None
 

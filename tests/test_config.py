@@ -4,7 +4,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlaudit.config import (
     SQLAuditConfig,
     _audit_config,
-    clear_config,
+    _clear_config,
     get_config,
     has_config,
     set_config,
@@ -224,7 +224,7 @@ def test_clear_config(SessionLocal):
     assert has_config() is True
 
     # Clear the configuration
-    clear_config()
+    _clear_config()
 
     # Verify configuration is cleared
     assert has_config() is False
@@ -263,7 +263,7 @@ def test_get_config_without_setting():
     """
     Test get_config raises an error when no configuration is set.
     """
-    clear_config()  # Ensure no configuration is set
+    _clear_config()  # Ensure no configuration is set
     with pytest.raises(SQLAuditConfigError):
         get_config()
 

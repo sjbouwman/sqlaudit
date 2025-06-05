@@ -1,31 +1,21 @@
-import datetime
 import json
-from typing import Any
-from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
 import uuid
 import warnings
 
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
 
-from sqlaudit.config import get_config
-from sqlaudit.models import SQLAuditLogField, SQLAuditLogTable
-from sqlaudit.registry import audit_model_registry
-from sqlaudit.utils import add_audit_log
+from sqlaudit._internals.types import AuditChange
+from sqlaudit.exceptions import SQLAuditUnsupportedDataTypeError
+from sqlaudit._internals.models import SQLAuditLogField, SQLAuditLogTable
+from sqlaudit._internals.registry import audit_model_registry
+from sqlaudit.types import _allowed_dtypes
+from sqlaudit._internals.utils import add_audit_change, add_audit_log
 
-
-class AuditChange(BaseModel):
-    """Represents a field change for auditing."""
-
-    field: str
-    old_value: list[str]
-    new_value: list[str]
-
-    model_config = ConfigDict(
-        extra="forbid",
-    )
+if TYPE_CHECKING:
+    from sqlaudit._internals.buffer import AuditBufferEntry
 
 
 def _get_audit_table(instance: DeclarativeBase, session: Session):
@@ -34,8 +24,8 @@ def _get_audit_table(instance: DeclarativeBase, session: Session):
     If it does not exist, it creates a new one.
     """
     metadata = audit_model_registry.get(instance)
-    record_id_field = (
-        metadata.options.record_id_field
+    resource_id_field = (
+        metadata.options.resource_id_field
         or metadata.table_model.__mapper__.primary_key[0].name
     )
 
@@ -48,7 +38,7 @@ def _get_audit_table(instance: DeclarativeBase, session: Session):
     if not log_table_db:
         log_table_db = SQLAuditLogTable(
             table_name=metadata.table_model.__tablename__,
-            record_id_field=record_id_field,
+            resource_id_field=resource_id_field,
             label=metadata.options.table_label,
         )
         session.add(log_table_db)
@@ -60,6 +50,7 @@ def _get_audit_log_field_from_table(
     table: SQLAuditLogTable,
     field: str,
     session: Session,
+    instance: DeclarativeBase,
 ) -> SQLAuditLogField:
     """
     Retrieves the audit log field for the given instance and field name.
@@ -83,93 +74,122 @@ def _get_audit_log_field_from_table(
     if field_db:
         return field_db
 
+    # We need to create a new field entry
+    dtype = instance.__mapper__.columns[field].type.python_type.__name__
+    if dtype not in list(_allowed_dtypes.keys()):
+        raise SQLAuditUnsupportedDataTypeError(
+            "Data type '%s' for field '%s' is not supported for auditing. Available types: %s"
+            % (dtype, field, ", ".join(_allowed_dtypes.keys()))
+        )
+
     field_db = SQLAuditLogField(
         table_id=table.table_id,
         field_name=field,
         table=table,
+        dtype=instance.__mapper__.columns[field].type.python_type.__name__,
     )
     session.add(field_db)
 
     return field_db
 
 
+def _register_entry_changes(
+    entry: "AuditBufferEntry",
+    table_db: SQLAuditLogTable,
+    session: Session,
+) -> None:
+    """
+    Registers the changes of a single entry in the audit log.
+    This function is called for each entry in the audit change buffer.
+    """
+
+    if not entry.changes:
+        return
+
+    metadata = audit_model_registry.get(entry.instance)
+    resource_id_field = (
+        metadata.options.resource_id_field
+        or metadata.table_model.__mapper__.primary_key[0].name
+    )
+
+    resource_id: str | None = getattr(entry.instance, resource_id_field, None)
+    if resource_id is None:
+        raise ValueError(
+            f"Instance {entry.instance} does not have a value for the record ID field {resource_id_field}."
+        )
+
+    log_db = add_audit_log(
+        table=table_db,
+        resource_id=resource_id,
+        context=entry.log_context,
+        session=session,
+    )
+
+    for change in entry.changes:
+        field_db = _get_audit_log_field_from_table(
+            table=table_db,
+            field=change.field,
+            instance=entry.instance,
+            session=session,
+        )
+
+        add_audit_change(
+            field=field_db,
+            log=log_db,
+            change=change,
+            session=session,
+        )
+
+
 def register_change(
-    instance: DeclarativeBase, changes: list[AuditChange], session: Session, timestamp: datetime.datetime
+    entries: list["AuditBufferEntry"],
+    session: Session,
 ) -> None:
     """
     Registers the field-level changes of an object into the audit log.
     """
-    config = get_config()
 
-    executing_user_id = (
-        config.get_user_id_callback() if config.get_user_id_callback else None
-    )
-    executing_user_id_str = str(executing_user_id) if executing_user_id else None
+    if len(entries) == 0:
+        return
 
-    metadata = audit_model_registry.get(instance)
-    record_id_field = (
-        metadata.options.record_id_field
-        or metadata.table_model.__mapper__.primary_key[0].name
-    )
-
-    record_id = getattr(instance, record_id_field, None)
-    if record_id is None:
-        raise ValueError(
-            "Instance %r does not have a value for the record ID field %r."
-            % (instance, record_id_field)
-        )
-
-    table_db = _get_audit_table(
-        instance=instance,
+    table_db: SQLAuditLogTable = _get_audit_table(
+        instance=entries[0].instance,
         session=session,
     )
 
-    for change in changes:
-        field_db = _get_audit_log_field_from_table(
-            table=table_db,
-            field=change.field,
+    for entry in entries:
+        _register_entry_changes(
+            entry=entry,
             session=session,
-        )
-
-        add_audit_log(
-            field=field_db,
-            session=session,
-            record_id=record_id,
-            old_value=change.old_value,
-            new_value=change.new_value,
-            changed_by=executing_user_id_str,
-            timestamp=timestamp,
+            table_db=table_db,
         )
 
 
-def _audit_changes_values_encoder(values: Iterable[Any]) -> list[str]:
+def _audit_changes_values_encoder(value: Any) -> str | None:
     """
-    Encodes the values for the audit log.
-    Converts all values to strings.
+    An encoder for values in audit changes.
+    It converts various data types to a string representation, as this is the type we use in DB.
     """
-    if not isinstance(values, Iterable) or isinstance(values, (str, bytes)):
-        raise TypeError(f"Expected an iterable of values, got {type(values).__name__} instead.")
+    if value is None:
+        return None
 
-    encoded = []
+    try:
+        if isinstance(value, (str, int, float, uuid.UUID)):
+            return str(value)
 
-    for value in values:
-        try:
-            if isinstance(value, (str, int, float, uuid.UUID)):
-                encoded.append(str(value))
+        elif isinstance(value, (list, tuple, dict)):
+            return json.dumps(value, default=str)
 
-            elif isinstance(value, (list, tuple, dict)):
-                encoded.append(json.dumps(value, default=str))
+        else:
+            return str(value)
 
-            else:
-                encoded.append(str(value))
+    except Exception as e:
+        warnings.warn(
+            f"Could not encode value {value!r} of type {type(value).__name__}: {e}",
+            category=RuntimeWarning,
+        )
 
-        except Exception as e:
-            warnings.warn(
-                f"Could not encode value {value!r} of type {type(value).__name__}: {e}",
-                category=RuntimeWarning,
-            )
-
-    return encoded
+        return None
 
 
 def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
@@ -197,8 +217,12 @@ def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
         if not history.has_changes():
             continue
 
-        old_state = list(history.deleted) + list(history.unchanged)
-        new_state = list(history.added) + list(history.unchanged)
+        old_state_list = list(history.deleted) + list(history.unchanged)
+        new_state_list = list(history.added) + list(history.unchanged)
+
+        # We convert the lists to single values or None if they are empty
+        old_state = old_state_list[0] if old_state_list else None
+        new_state = new_state_list[0] if new_state_list else None
 
         if old_state != new_state:
             changes.append(

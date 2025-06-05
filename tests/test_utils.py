@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import ForeignKey, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from sqlaudit.utils import (
+from sqlaudit._internals.utils import (
     column_is_foreign_key_of,
     get_primary_keys,
     get_user_id_from_instance,

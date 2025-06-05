@@ -5,7 +5,8 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from sqlaudit.exceptions import SQLAuditTableAlreadyRegisteredError
-from sqlaudit.registry import AuditRegistry, SQLAuditOptions
+from sqlaudit._internals.registry import AuditRegistry
+from sqlaudit.types import SQLAuditOptions
 
 logger = getLogger(__name__)
 
