@@ -18,7 +18,7 @@ class Customer(Base):
 
 ## Notice  
 
-This project is in its early stages and is not yet ready for production use. Note that new updates will probably break the API, so please use it with caution.
+This project is in its early stages and is not yet ready for production use.
 
 ## Quick start
 
