@@ -3,6 +3,8 @@ from contextvars import ContextVar, Token
 from typing import Annotated
 from pydantic import BaseModel, Field
 
+from .types import ResourceIdType
+
 class SQLAuditContext(BaseModel):
     changed_by: Annotated[
         str | None,
@@ -95,14 +97,14 @@ class AuditContextManager(AbstractContextManager):
     def __init__(
         self,
         *,
-        user_id: str | None = None,
+        user_id: ResourceIdType | None = None,
         reason: str | None = None,
-        impersonated_by: str | None = None,
+        impersonated_by: ResourceIdType | None = None,
     ):
         self.new_context = SQLAuditContext(
-            changed_by=user_id,
+            changed_by=str(user_id),
             reason=reason,
-            impersonated_by=impersonated_by,
+            impersonated_by=str(impersonated_by),
         )
         self.token: Token | None = None
 

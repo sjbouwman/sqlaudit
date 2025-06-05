@@ -351,7 +351,7 @@ if __name__ == "__main__":
 
 The `get_resource_changes` function in the `sqlaudit.retrieval` module is used to retrieve changes made to a specific resource in the database. It allows you to filter changes by resource IDs, user IDs, and other criteria. This function is particularly useful for auditing purposes, as it enables you to track modifications made to your models over time.
 
-### Parameters
+#### Parameters
 
 - `model_class`: *required* (e.g. `User`) The SQLAlchemy model class for which you want to retrieve changes.
 - `session`: *required* The SQLAlchemy session to use for querying the database.
@@ -359,3 +359,61 @@ The `get_resource_changes` function in the `sqlaudit.retrieval` module is used t
 - `filter_fields`: *optional* A `str` or a list of `str` to filter the changes by specific fields. If not provided, all fields will be included.
 - `filter_user_ids`: *optional* A `ResourceIdType` or a list of `ResourceIdType` to filter the changes by user IDs. If not provided, all user IDs will be included. ResourceIdType can be a `str`, `int`, or `uuid.UUID`.
 - `filter_date_range`: *optional* `tuple[datetime | None, datetime | None]` to filter the changes by a date range. If not provided, all dates will be included.
+
+### `sqlaudit.decorators.track_table()`  
+
+The `track_table` decorator is used to enable auditing for a specific SQLAlchemy model. By applying this decorator to a model class, you can specify which fields should be tracked for changes, allowing SQLAudit to automatically record modifications made to those fields.
+
+#### Parameters  
+
+- `tracked_fields`: *required* A list of strings representing the names of the fields to be tracked for changes. These fields will be monitored for modifications, and any changes will be recorded in the audit table.
+- `table_label`: *optional* A string representing the label for the table. This label is used in the audit table to identify the model being tracked. If not provided, the default label will be the name of 
+the model class.
+- `resource_id_field`: *optional* A string representing the name of the field that serves as the resource ID for the model. This field is used to uniquely identify instances of the model in the audit table. If not provided, the primary key field of the model will be used.
+- `user_id_field`: *optional* A string representing the name of the field that stores the user ID of the user who made the change. This field is used to track which user made modifications to the model. If not provided, it will default to `config.user_model_user_id_field` from the global configuration.
+
+### `set_audit_context()`
+
+The `set_audit_context` function is used to set additional context for the audit entries. This also allows for overriding the default user ID gotten from the `get_user_id_callback` in the configuration.
+
+#### Parameters
+
+- `user_id`: *optional* A `ResourceIdType` representing the user ID of the user making the change. If not provided, the user ID will be retrieved using the `get_user_id_callback` from the configuration.
+- `reason`: *optional* A string representing the reason for the change. This can be used to provide additional context for the audit entry.
+- `impersonated_by`: *optional* A `ResourceIdType` representing the user ID of the user who is impersonating another user. This is useful for tracking changes made by users who are acting on behalf of others.
+
+### Example Usage of `set_audit_context`
+
+```python
+from sqlaudit.context import set_audit_context
+
+# Every operation performed after this will be audited with the specified context. 
+set_audit_context(user_id=1, reason="Testing", impersonated_by=2)
+
+new_customer = Customer(name="John Doe", email="jdoe@example.com")
+db.add(new_customer)
+```
+
+### `AuditContextManager`
+
+The `AuditContextManager` is a context manager that allows you to set the audit context for a specific block of code. This is useful when you want to temporarily override the default user ID or provide additional context for the audit entries. After the block is exited the context is reset to the previous state. 
+
+#### Parameters
+
+- `user_id`: *optional* A `ResourceIdType` representing the user ID of the user making the change. If not provided, the user ID will be retrieved using the `get_user_id_callback` from the configuration.
+- `reason`: *optional* A string representing the reason for the change. This can be used to provide additional context for the audit entry.
+- `impersonated_by`: *optional* A `ResourceIdType` representing the user ID of the user who is impersonating another user. This is useful for tracking changes made by users who are acting on behalf of others.
+
+### Example Usage of `AuditContextManager`
+
+```python
+from sqlaudit.context import AuditContextManager
+with AuditContextManager(user_id=1, reason="Testing", impersonated_by=2):
+    # Every operation performed within this block will be audited with the specified context.
+    # Perform operations that will be audited
+    ... # Your code here
+
+    db.flush()  # Ensure changes are flushed to the database
+
+# State is reset back to the previous context 
+```
