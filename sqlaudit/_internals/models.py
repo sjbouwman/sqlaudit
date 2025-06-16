@@ -12,7 +12,7 @@ from sqlalchemy.orm import (
 
 from uuid_utils import uuid7
 def uuid7_stdlib():
-    return uuid.UUID(bytes=uuid7().bytes, version=7)
+    return uuid.UUID(bytes=uuid7().bytes)
 
 
 class SQLAuditBase(DeclarativeBase): ...
@@ -46,7 +46,7 @@ class SQLAuditLogField(SQLAuditBase):
 class SQLAuditLog(SQLAuditBase):
     __tablename__ = "SQLAuditLogs"
 
-    record_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7)
+    record_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7_stdlib)
     
     table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditTables.table_id"))
     table: Mapped["SQLAuditLogTable"] = relationship()
