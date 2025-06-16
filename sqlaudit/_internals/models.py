@@ -9,7 +9,10 @@ from sqlalchemy.orm import (
     mapped_column,
     relationship,
 )
+
 from uuid_utils import uuid7
+def uuid7_stdlib():
+    return uuid.UUID(bytes=uuid7().bytes, version=7)
 
 
 class SQLAuditBase(DeclarativeBase): ...
