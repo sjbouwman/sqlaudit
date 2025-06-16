@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from sqlalchemy.orm import DeclarativeBase
+from sqlaudit._internals.logger import logger
 from sqlaudit._internals.registry import audit_model_registry
 from sqlaudit.types import SQLAuditOptions
 
@@ -10,7 +11,7 @@ T = TypeVar("T", bound=DeclarativeBase)
 
 def track_table(
     *,
-    tracked_fields: list[str],
+    tracked_fields: list[str] | None = None,
     resource_id_field: str | None = None,
     user_id_field: str | None = None,
     table_label: str | None = None,
@@ -20,7 +21,7 @@ def track_table(
     This decorator registers the specified table model with the SQLAudit system,
     allowing it to track changes to the specified fields.
     Args:
-        tracked_fields (list[str]): List of field names to track for changes.
+        tracked_fields (list[str] | None): A list of field names to track changes for. If None, all trackable fields will be tracked.
         resource_id_field (str | None): The name of the field that uniquely identifies the resource.
         user_id_field (str | None): The name of the field that identifies the user making changes.
         table_label (str | None): A label for the table, used for display purposes.

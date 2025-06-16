@@ -16,40 +16,45 @@ from sqlaudit.hooks import register_hooks
 from sqlaudit.retrieval import get_resource_changes
 from sqlaudit.types import SQLAuditChange, SQLAuditRecord
 from sqlaudit._internals.utils import get_user_id_from_instance
+from sqlaudit._internals.registry import audit_model_registry
 from tests.utils.db import create_user_model
 
 
-@pytest.fixture(scope="function")
-def SessionLocal():
-    """Fixture to create a new SQLAlchemy session for each test."""
 
-    engine = create_engine("sqlite:///:memory:")
+@pytest.fixture(scope="function")
+def db_session():
+    """
+    Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
+    Returns a tuple of (SessionLocal, Base).
+    """
+    class Base(DeclarativeBase): ...
+
+    url = "sqlite:///:memory:"
+    engine = create_engine(url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    yield SessionLocal
-
-
-def get_db(SessionLocal):
+    yield SessionLocal, Base
+    audit_model_registry.clear()
+   
+   
+def get_db(db_session):
     """Helper function to get a database session."""
+    SessionLocal, _ = db_session
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-
-def test_full_audit_flow(SessionLocal: sessionmaker):
+def test_full_audit_flow(db_session):
     """
     Test the full audit flow including configuration, buffer management, and change registration.
     This test checks if the audit system correctly collects and processes changes.
     """
+    SessionLocal, Base = db_session
 
     # Clear any existing configuration
     _clear_config()
-
-    # Create a user model
-    class Base(DeclarativeBase):
-        pass
 
     User = create_user_model(Base)
 
@@ -76,7 +81,7 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
         created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
 
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
         user_model=User,
         user_model_user_id_field="user_id",
         get_user_id_callback=lambda: get_user_id_from_instance(test_user, "user_id"),
@@ -87,7 +92,7 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
     # We have to register the hooks
     register_hooks()
 
-    with next(get_db(SessionLocal)) as session:
+    with next(get_db(db_session)) as session:
         session: Session
         # Create the tables
         Base.metadata.create_all(bind=session.get_bind())
@@ -144,4 +149,4 @@ def test_full_audit_flow(SessionLocal: sessionmaker):
                     f"Unexpected field {change.field_name} in change."
                 )
 
-                
+

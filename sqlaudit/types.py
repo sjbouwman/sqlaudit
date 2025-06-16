@@ -16,6 +16,7 @@ _allowed_dtypes = {
     "dict": json.loads,
 }
 
+
 class SQLAuditChange(BaseModel):
     """
     Represents a change in the audit log.
@@ -47,17 +48,15 @@ class SQLAuditChange(BaseModel):
             if value is None or value == "":
                 setattr(self, field, None)
                 continue
-                
 
             assert self.dtype in _allowed_dtypes, (
                 f"Unsupported dtype: {self.dtype}. Available types: {', '.join(_allowed_dtypes.keys())}"
             )
 
-
             target_type = _allowed_dtypes[self.dtype]
 
             setattr(self, field, target_type(value))
-    
+
         return self
 
     model_config = ConfigDict(from_attributes=True)
@@ -121,19 +120,20 @@ class SQLAuditRecord(BaseModel):
 
 @dataclass
 class SQLAuditOptions:
-    tracked_fields: list[str]
+    tracked_fields: list[str] | None = None
     resource_id_field: str | None = None
     user_id_field: str | None = None
     table_label: str | None = None
 
     def __post_init__(self):
-        if not isinstance(self.tracked_fields, list) or not all(
-            isinstance(field, str) for field in self.tracked_fields
-        ):
-            raise TypeError(
-                "SQLAuditOptions.tracked_fields must be a list[str]. Got %r."
-                % type(self.tracked_fields).__name__
-            )
+        if self.tracked_fields is not None:
+                if not isinstance(self.tracked_fields, list) or not all(
+                    isinstance(field, str) for field in self.tracked_fields
+                ):
+                    raise TypeError(
+                        "SQLAuditOptions.tracked_fields must be either None or a list of strings. "
+                        f"Got {type(self.tracked_fields).__name__}."
+                    )
         if (
             not isinstance(self.resource_id_field, str)
             and self.resource_id_field is not None

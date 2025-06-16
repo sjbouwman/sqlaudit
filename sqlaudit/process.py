@@ -112,7 +112,7 @@ def _register_entry_changes(
         or metadata.table_model.__mapper__.primary_key[0].name
     )
 
-    resource_id: str | None = getattr(entry.instance, resource_id_field, None)
+    resource_id: str | None = str(getattr(entry.instance, resource_id_field, None))
     if resource_id is None:
         raise ValueError(
             f"Instance {entry.instance} does not have a value for the record ID field {resource_id_field}."
@@ -206,7 +206,7 @@ def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
         )
         return changes
 
-    tracked_fields = entry.options.tracked_fields
+    tracked_fields = entry.options.tracked_fields or entry.trackable_fields
 
     for field in tracked_fields:
         if not hasattr(instance, field):

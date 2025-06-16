@@ -11,20 +11,28 @@ from sqlaudit.config import (
 )
 from sqlaudit.exceptions import SQLAuditConfigError
 from tests.utils.db import create_user_model
+from sqlaudit._internals.registry import audit_model_registry
 
 
 @pytest.fixture(scope="function")
-def SessionLocal():
-    """Fixture to create a new SQLAlchemy session for each test."""
+def db_session():
+    """
+    Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
+    Returns a tuple of (SessionLocal, Base).
+    """
+    class Base(DeclarativeBase): ...
 
-    engine = create_engine("sqlite:///:memory:")
+    url = "sqlite:///:memory:"
+    engine = create_engine(url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    yield SessionLocal
-
-
-def get_db(SessionLocal):
+    yield SessionLocal, Base
+    audit_model_registry.clear()
+   
+   
+def get_db(db_session):
     """Helper function to get a database session."""
+    SessionLocal, _ = db_session
     db = SessionLocal()
     try:
         yield db
@@ -32,12 +40,13 @@ def get_db(SessionLocal):
         db.close()
 
 
-def test_config_without_user(SessionLocal):
+def test_config_without_user(db_session):
     """
     Test the SQLAuditConfig initialization and validation without user model.
     """
+    SessionLocal, _ = db_session
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
     )
 
     set_config(config)
@@ -70,14 +79,11 @@ def test_faulty_config_without_user():
         SQLAuditConfig(session_factory="not_callable")  # type: ignore
 
 
-def test_config_with_user(SessionLocal):
+def test_config_with_user(db_session):
     """
     Test the SQLAuditConfig initialization and validation.
     """
-
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
+    SessionLocal, Base = db_session
 
     User = create_user_model(Base)
 
@@ -86,7 +92,7 @@ def test_config_with_user(SessionLocal):
 
     # Test the SQLAuditConfig initialization
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
         user_model=User,
         user_model_user_id_field="user_id",
         get_user_id_callback=lambda: user.user_id
@@ -103,36 +109,31 @@ def test_config_with_user(SessionLocal):
     assert callable(config_retrieved.get_user_id_callback)
 
 
-def test_faulty_config_with_user_without_callback(SessionLocal):
+def test_faulty_config_with_user_without_callback(db_session):
     """
     Test the SQLAuditConfig initialization and validation with user model but without get_user_id_callback.
     which should raise an error as get_user_id_callback is required when user_model is set.
     """
-
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
+    SessionLocal, Base = db_session
 
     User = create_user_model(Base)
 
     # Test the SQLAuditConfig initialization
     with pytest.raises(SQLAuditConfigError):
         SQLAuditConfig(
-            session_factory=lambda: get_db(SessionLocal),
+            session_factory=lambda: get_db(db_session),
             user_model=User,
             user_model_user_id_field="user_id",
         )
 
 
-def test_faulty_config_with_user_incorrect_field(SessionLocal):
+def test_faulty_config_with_user_incorrect_field(db_session):
     """
     Test the SQLAuditConfig initialization and validation with user model but with incorrect user_id field.
     which should raise an error as the user_model_user_id_field does not exist in the User model..
     """
+    SessionLocal, Base = db_session
 
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
 
     User = create_user_model(Base)
     # Create a user instance
@@ -142,12 +143,12 @@ def test_faulty_config_with_user_incorrect_field(SessionLocal):
     # Test the SQLAuditConfig initialization
     with pytest.raises(SQLAuditConfigError):
         SQLAuditConfig(
-            session_factory=lambda: get_db(SessionLocal),
+            session_factory=lambda: get_db(db_session),
             user_model=User,
             user_model_user_id_field="incorrect_field",  # This field does not exist
             get_user_id_callback=lambda: user.user_id,  # type: ignore
         )
-def test_faulty_config_with_uncallable_session_factory(SessionLocal):
+def test_faulty_config_with_uncallable_session_factory():
     """
     Test the SQLAuditConfig initialization and validation with an uncallable session_factory.
     which should raise an error as session_factory must return a callable.
@@ -159,32 +160,31 @@ def test_faulty_config_with_uncallable_session_factory(SessionLocal):
             session_factory="not_a_callable", # type: ignore
         )
 
-def test_faulty_config_with_non_string_user_id_field(SessionLocal):
+def test_faulty_config_with_non_string_user_id_field(db_session):
     """
     Test the SQLAuditConfig initialization and validation with a non-string user_model_user_id_field.
     which should raise an error as user_model_user_id_field must be a string.
     """
+    SessionLocal, Base = db_session
 
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
 
     User = create_user_model(Base)
 
     # Test the SQLAuditConfig initialization
     with pytest.raises(SQLAuditConfigError):
         SQLAuditConfig(
-            session_factory=lambda: get_db(SessionLocal),
+            session_factory=lambda: get_db(db_session),
             user_model=User,
             user_model_user_id_field=123,  # type: ignore
             get_user_id_callback=lambda: 1,
         )
 
-def test_faulty_config_with_non_declarative_user_model(SessionLocal):
+def test_faulty_config_with_non_declarative_user_model(db_session):
     """
     Test the SQLAuditConfig initialization and validation with a non-declarative user model.
     which should raise an error as user_model must be a DeclarativeBase subclass.
     """
+    SessionLocal, _ = db_session
 
     # Create a non-declarative user model
     class NonDeclarativeUser:
@@ -193,18 +193,17 @@ def test_faulty_config_with_non_declarative_user_model(SessionLocal):
     # Test the SQLAuditConfig initialization
     with pytest.raises(SQLAuditConfigError):
         SQLAuditConfig(
-            session_factory=lambda: get_db(SessionLocal), # type: ignore
+            session_factory=lambda: get_db(db_session), # type: ignore
             user_model=NonDeclarativeUser,  # This is not a DeclarativeBase subclass
         )
 
         
-def test_clear_config(SessionLocal):
+def test_clear_config(db_session):
     """
     Test clearing the SQLAudit configuration.
     """
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
+    SessionLocal, Base = db_session
+
 
     User = create_user_model(Base)
 
@@ -213,7 +212,7 @@ def test_clear_config(SessionLocal):
 
     # Set a valid configuration
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
         user_model=User,
         user_model_user_id_field="user_id",
         get_user_id_callback=lambda: user.user_id,
@@ -230,16 +229,16 @@ def test_clear_config(SessionLocal):
     assert has_config() is False
 
 
-def test_has_config(SessionLocal):
+def test_has_config(db_session):
     """
     Test the has_config function to check if configuration is set.
     """
+
+    _, Base = db_session
+
     # Initially, no configuration should be set
     assert has_config() is False
 
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
 
     User = create_user_model(Base)
 
@@ -248,7 +247,7 @@ def test_has_config(SessionLocal):
 
     # Set a valid configuration
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
         user_model=User,
         user_model_user_id_field="user_id",
         get_user_id_callback=lambda: user.user_id,
@@ -275,28 +274,25 @@ def test_set_config_with_invalid_type():
     with pytest.raises(SQLAuditConfigError):
         set_config(config="invalid_config")  # type: ignore
 
-def test_get_config_repr(SessionLocal):
+def test_get_config_repr(db_session):
     """
     Test the __repr__ method of SQLAuditConfig.
     """
-    # Create the base and user model
-    class Base(DeclarativeBase):
-        pass
+    SessionLocal, Base = db_session
+
     User = create_user_model(Base)
     # Create a user instance
     user = User()
 
     # Set a valid configuration
     config = SQLAuditConfig(
-        session_factory=lambda: get_db(SessionLocal),
+        session_factory=lambda: get_db(db_session),
         user_model=User,
         user_model_user_id_field="user_id",
         get_user_id_callback=lambda: user.user_id,
     )
 
-
     set_config(config)
-
 
     # We check if printing _audit_config gives the expected output
     config_repr = repr(_audit_config)

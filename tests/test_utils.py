@@ -8,21 +8,31 @@ from sqlaudit._internals.utils import (
     get_user_id_from_instance,
     table_exists,
 )
+from sqlaudit._internals.registry import audit_model_registry
 
 from .utils.db import create_user_model
 
 
+
 @pytest.fixture(scope="function")
-def SessionLocal():
-    """Fixture to create a new SQLAlchemy session for each test."""
-    engine = create_engine("sqlite:///:memory:")
+def db_session():
+    """
+    Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
+    Returns a tuple of (SessionLocal, Base).
+    """
+    class Base(DeclarativeBase): ...
+
+    url = "sqlite:///:memory:"
+    engine = create_engine(url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    yield SessionLocal
-
-
-def get_db(SessionLocal):
+    yield SessionLocal, Base
+    audit_model_registry.clear()
+   
+   
+def get_db(db_session):
     """Helper function to get a database session."""
+    SessionLocal, _ = db_session
     db = SessionLocal()
     try:
         yield db
@@ -30,19 +40,18 @@ def get_db(SessionLocal):
         db.close()
 
 
-def test_table_exists(SessionLocal: sessionmaker):
+
+def test_table_exists(db_session):
     """
     Test the SQLAudit.utils.table_exists function.
     This test checks if the table_exists function correctly identifies the existence of a table.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    _, Base = db_session
 
     User = create_user_model(Base)
 
     # session = get_db(SessionLocal)
-    with next(get_db(SessionLocal)) as session:
+    with next(get_db(db_session)) as session:
         # Table should first not exist
         assert not table_exists(session, User.__tablename__), (
             f"Table {User.__tablename__} should not exist at this point."
@@ -57,18 +66,16 @@ def test_table_exists(SessionLocal: sessionmaker):
         )
 
 
-def test_get_primary_keys(SessionLocal: sessionmaker):
+def test_get_primary_keys(db_session):
     """
     Test the SQLAudit.utils.get_primary_keys function.
     This test checks if the get_primary_keys function correctly retrieves primary keys from a table.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    _, Base = db_session
 
     User = create_user_model(Base)
 
-    with next(get_db(SessionLocal)) as session:
+    with next(get_db(db_session)) as session:
         # Create the table
         Base.metadata.create_all(bind=session.get_bind())
 
@@ -80,21 +87,19 @@ def test_get_primary_keys(SessionLocal: sessionmaker):
         )
 
 
-def test_get_primary_keys_multiple_primary_keys(SessionLocal: sessionmaker):
+def test_get_primary_keys_multiple_primary_keys(db_session):
     """
     Test the SQLAudit.utils.get_primary_keys function with a model that has multiple primary keys.
     This test checks if the function correctly retrieves all primary keys from a table with composite primary keys.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    _, Base = db_session
 
     class SomeOtherModel(Base):
         __tablename__ = "some_other_model"
         id: Mapped[int] = mapped_column(primary_key=True)
         secondary_key: Mapped[str] = mapped_column(String(32), primary_key=True)
 
-    with next(get_db(SessionLocal)) as session:
+    with next(get_db(db_session)) as session:
         # Create the table
         Base.metadata.create_all(bind=session.get_bind())
 
@@ -106,14 +111,12 @@ def test_get_primary_keys_multiple_primary_keys(SessionLocal: sessionmaker):
         )
 
 
-def test_get_user_id_from_instance(SessionLocal: sessionmaker):
+def test_get_user_id_from_instance(db_session):
     """
     Test the SQLAudit.utils.get_user_id_from_instance function.
     This test checks if the function correctly extracts the user ID from an instance of a model.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    SessionLocal, Base = db_session
 
     User = create_user_model(Base)
 
@@ -121,7 +124,7 @@ def test_get_user_id_from_instance(SessionLocal: sessionmaker):
         user_id=3821, first_name="John", last_name="Doe", email="jdoe@example.com"
     )
 
-    with next(get_db(SessionLocal)) as session:
+    with next(get_db(db_session)) as session:
         # Create the table
         Base.metadata.create_all(bind=session.get_bind())
 
@@ -138,14 +141,12 @@ def test_get_user_id_from_instance(SessionLocal: sessionmaker):
             get_user_id_from_instance(user, "non_existent_field")
 
 
-def test_column_is_foreign_key(SessionLocal: sessionmaker):
+def test_column_is_foreign_key(db_session):
     """
     Test the SQLAudit.utils.column_is_foreign_key function.
     This test checks if the function correctly identifies a column as a foreign key.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    _, Base = db_session
 
     User = create_user_model(Base)
 
@@ -167,14 +168,12 @@ def test_column_is_foreign_key(SessionLocal: sessionmaker):
         "The column 'created_by_user_id' should be a foreign key to 'users.user_id'."
     )
 
-def test_column_is_not_foreign_key(SessionLocal: sessionmaker):
+def test_column_is_not_foreign_key(db_session):
     """
     Test the SQLAudit.utils.column_is_foreign_key function with a column that is not a foreign key.
     This test checks if the function correctly identifies a column that is not a foreign key.
     """
-
-    class Base(DeclarativeBase):
-        pass
+    _, Base = db_session
 
     User = create_user_model(Base)
 

@@ -96,6 +96,9 @@ def add_audit_log(
     """
     Adds an audit log entry to the database.
     """
+    assert isinstance(resource_id, str), (
+        "resource_id must be a string, got %s" % type(resource_id).__name__
+    )
     audit_log_db = SQLAuditLog(resource_id=resource_id, table=table, **context.dump())
     session.add(audit_log_db)
     return audit_log_db

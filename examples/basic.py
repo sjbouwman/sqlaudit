@@ -1,5 +1,12 @@
+import uuid
 from sqlalchemy import JSON, ForeignKey, Integer, String, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    sessionmaker,
+    relationship,
+)
 
 from sqlaudit.config import SQLAuditConfig, set_config
 from sqlaudit.context import AuditContextManager
@@ -42,6 +49,7 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String, nullable=False)
 
+
 # Create a user instance
 user = User(username="jdoe")
 
@@ -63,12 +71,36 @@ config = SQLAuditConfig(
 set_config(config)
 register_hooks()
 
+
+class CountryCode(Base):
+    """
+    CountryCode model representing country codes in the system.
+    This is a simple model to demonstrate the basic functionality of SQLAudit.
+    """
+
+    __tablename__ = "country_codes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+
 # Define the Customer model with tracked fields for auditing
-@track_table(tracked_fields=["name", "email", "user_id", "age", "data", "is_active"], table_label="Customer")
+@track_table(
+    # tracked_fields=[
+    #     "customer_id",
+    #     "name",
+    #     "email",
+    #     "user_id",
+    #     "age",
+    #     "data",
+    #     "is_active",
+    # ],
+    table_label="Customer",
+)
 class Customer(Base):
     """
     Customer model representing customers in the system.
-    
+
     For demonstration purposes we include a some basic data types such as:
     - Integer
     - String
@@ -80,15 +112,20 @@ class Customer(Base):
 
     __tablename__ = "customers"
 
-    customer_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
     email: Mapped[str] = mapped_column(String)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
     age: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    data: Mapped[dict | None] = mapped_column(JSON, nullable=True) 
+    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    country_id: Mapped[int | None] = mapped_column(
+        ForeignKey("country_codes.id"), nullable=True
+    )
+
+    county: Mapped[CountryCode | None] = relationship("CountryCode")
+
 
 if __name__ == "__main__":
     # Create all tables in the database

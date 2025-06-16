@@ -1,5 +1,4 @@
 import datetime
-import uuid
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -7,33 +6,45 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlaudit._internals.types import LogContextInternal
 from sqlaudit.hooks import _audit_change_buffer
 from sqlaudit._internals.types import AuditChange
+from sqlaudit._internals.registry import audit_model_registry
 
 
 @pytest.fixture(scope="function")
-def SessionLocal():
-    """Fixture to create a new SQLAlchemy session for each test."""
+def db_session():
+    """
+    Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
+    Returns a tuple of (SessionLocal, Base).
+    """
+    class Base(DeclarativeBase): ...
 
-    engine = create_engine("sqlite:///:memory:")
+    url = "sqlite:///:memory:"
+    engine = create_engine(url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    yield SessionLocal
+    yield SessionLocal, Base
+    audit_model_registry.clear()
+   
+   
+def get_db(db_session):
+    """Helper function to get a database session."""
+    SessionLocal, _ = db_session
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-
-
-def test_audit_change_buffer(SessionLocal: sessionmaker):
+def test_audit_change_buffer(db_session):
     """
     Test the AuditChangeBuffer functionality.
     This test checks if the buffer correctly collects and clears audit changes.
     """
+    SessionLocal, Base = db_session
 
     # We first check that the buffer is empty
     assert len(_audit_change_buffer.items()) == 0, (
         "Audit change buffer should be empty initially."
     )
-
-    class Base(DeclarativeBase):
-        pass
-
     # We add some dummy changes to the buffer
 
     changes = [

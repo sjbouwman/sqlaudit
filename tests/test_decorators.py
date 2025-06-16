@@ -1,69 +1,54 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, mapped_column, Mapped
-
-from sqlaudit.config import (
-    _clear_config,
-)
 from sqlaudit.decorators import track_table
+from sqlaudit._internals.registry import audit_model_registry
 
 
 @pytest.fixture(scope="function")
-def SessionLocal():
-    """Fixture to create a new SQLAlchemy session for each test."""
+def db_session():
+    """
+    Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
+    Returns a tuple of (SessionLocal, Base).
+    """
+    class Base(DeclarativeBase): ...
 
-    engine = create_engine("sqlite:///:memory:")
+    url = "sqlite:///:memory:"
+    engine = create_engine(url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    yield SessionLocal
+    yield SessionLocal, Base
+    audit_model_registry.clear()
+   
 
-def test_decorator(SessionLocal: sessionmaker):
-    """
-    Test the SQLAudit decorators functionality.
-    This test checks if the decorators correctly register changes and handle user information.
-    """
 
-    # Clear any existing configuration
-    _clear_config()
-
-    # Create a user model
-    class Base(DeclarativeBase):
-        pass
-    
+def test_decorator(db_session):
+    _, Base = db_session
 
     @track_table(tracked_fields=["name", "email", "created_by_user_id"])
     class Customer(Base):
         __tablename__ = "customer"
         id: Mapped[int] = mapped_column(primary_key=True)
         name: Mapped[str] = mapped_column()
+        email: Mapped[str] = mapped_column()
+        created_by_user_id: Mapped[int] = mapped_column()
 
 
 
-def test_decorator_wrong_tracked_fields_type(SessionLocal: sessionmaker):
-    """
-    Test the SQLAudit decorators with incorrect tracked_fields type.
-    This test checks if the decorator raises an error when tracked_fields is not a list.
-    """
+def test_decorator_wrong_tracked_fields_type(db_session):
+    _, Base = db_session
 
-    class Base(DeclarativeBase):
-        pass
-
-    with pytest.raises(TypeError, match="tracked_fields must be a list"):
-        @track_table(tracked_fields="name") # type: ignore
+    with pytest.raises(TypeError):
+        @track_table(tracked_fields="name")  # type: ignore
         class Customer(Base):
             __tablename__ = "customer"
             id: Mapped[int] = mapped_column(primary_key=True)
             name: Mapped[str] = mapped_column()
 
 
-def test_decorator_with_wrong_user_id_field_type(SessionLocal: sessionmaker):
-    """
-    Test the SQLAudit decorators with incorrect user_id_field type.
-    This test checks if the decorator raises an error when user_id_field is not a string.
-    """
 
-    class Base(DeclarativeBase):
-        pass 
+def test_decorator_with_wrong_user_id_field_type(db_session):
+    _, Base = db_session
 
     with pytest.raises(TypeError):
         @track_table(tracked_fields=["name"], user_id_field=123)  # type: ignore
@@ -72,14 +57,10 @@ def test_decorator_with_wrong_user_id_field_type(SessionLocal: sessionmaker):
             id: Mapped[int] = mapped_column(primary_key=True)
             name: Mapped[str] = mapped_column()
 
-def test_decorator_with_wrong_resource_id_field_type(SessionLocal: sessionmaker):
-    """
-    Test the SQLAudit decorators with incorrect resource_id_field type.
-    This test checks if the decorator raises an error when resource_id_field is not a string.
-    """
 
-    class Base(DeclarativeBase):
-        pass
+
+def test_decorator_with_wrong_resource_id_field_type(db_session):
+    _, Base = db_session
 
     with pytest.raises(TypeError):
         @track_table(tracked_fields=["name"], resource_id_field=123)  # type: ignore
@@ -90,14 +71,8 @@ def test_decorator_with_wrong_resource_id_field_type(SessionLocal: sessionmaker)
 
 
 
-def test_decorator_with_wrong_table_label_type(SessionLocal: sessionmaker):
-    """
-    Test the SQLAudit decorators with incorrect table_label type.
-    This test checks if the decorator raises an error when table_label is not a string.
-    """
-
-    class Base(DeclarativeBase):
-        pass
+def test_decorator_with_wrong_table_label_type(db_session):
+    _, Base = db_session
 
     with pytest.raises(TypeError):
         @track_table(tracked_fields=["name"], table_label=123)  # type: ignore
@@ -105,5 +80,29 @@ def test_decorator_with_wrong_table_label_type(SessionLocal: sessionmaker):
             __tablename__ = "customer"
             id: Mapped[int] = mapped_column(primary_key=True)
             name: Mapped[str] = mapped_column()
-    
+
+
+
+def test_decorator_auto_tracked_fields(db_session):
+    _, Base = db_session
+
+    @track_table()
+    class Customer(Base):
+        __tablename__ = "customer"
+        id: Mapped[int] = mapped_column(primary_key=True)
+        name: Mapped[str] = mapped_column()
+        email: Mapped[str] = mapped_column()
+        created_by_user_id: Mapped[int] = mapped_column()
+
+
+
+def test_decorator_not_existing_tracked_field(db_session):
+    _, Base = db_session
+
+    with pytest.raises(ValueError):
+        @track_table(tracked_fields=["non_existing_field"])
+        class CustomerWrongField(Base):
+            __tablename__ = "customer"
+            id: Mapped[int] = mapped_column(primary_key=True)
+            name: Mapped[str] = mapped_column()
 
