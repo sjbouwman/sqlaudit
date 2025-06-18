@@ -13,6 +13,7 @@ from sqlaudit.context import AuditContextManager
 from sqlaudit.decorators import track_table
 from sqlaudit.hooks import register_hooks
 from sqlaudit.retrieval import get_resource_changes
+from contextvars import ContextVar
 
 
 # Create an in-memory SQLite database
@@ -21,6 +22,15 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 # Create a session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+user_id_context: ContextVar[str | None] = ContextVar(
+    "user_id_context_var", default=None
+)
+
+
+def get_user_id_from_context() -> str | None:
+    return user_id_context.get()
 
 
 def get_db():
@@ -54,9 +64,9 @@ class User(Base):
 user = User(username="jdoe")
 
 
-def mocked_user_id_retrieval() -> int:
-    """Mocked function to return the current user ID for audit tracking."""
-    return 1
+def get_user_id_from_context_mock() -> str | None:
+    print("Retrieving user ID from context (MOCK): 1")
+    return "1"
 
 
 # Set the global audit configuration
@@ -64,7 +74,7 @@ config = SQLAuditConfig(
     session_factory=get_db,
     user_model=User,
     user_model_user_id_field="user_id",
-    get_user_id_callback=mocked_user_id_retrieval,
+    get_user_id_callback=get_user_id_from_context,
 )
 
 # We set the configuration and register hooks for auditing
@@ -85,18 +95,7 @@ class CountryCode(Base):
 
 
 # Define the Customer model with tracked fields for auditing
-@track_table(
-    # tracked_fields=[
-    #     "customer_id",
-    #     "name",
-    #     "email",
-    #     "user_id",
-    #     "age",
-    #     "data",
-    #     "is_active",
-    # ],
-    table_label="Customer",
-)
+@track_table(table_label="Customer")
 class Customer(Base):
     """
     Customer model representing customers in the system.
@@ -131,6 +130,7 @@ if __name__ == "__main__":
     # Create all tables in the database
     Base.metadata.create_all(engine)
 
+
     # Set up audit hooks before any tracked operations
     register_hooks()
 
@@ -140,6 +140,9 @@ if __name__ == "__main__":
         print("=== Adding mock user ===")
         session.add(user)
         session.commit()
+        user_id_context.set(str(user.user_id))
+
+        print(f"User ID from context (IN BASIC): {user_id_context.get()}")
 
         def add_customer(session, name, email, user_id, **kwargs):
             customer = Customer(name=name, email=email, user_id=user_id, **kwargs)
@@ -158,7 +161,7 @@ if __name__ == "__main__":
 
         # Modify customer with auditing context
         print("\n=== Modifying Jane Doe with AuditContextManager ===")
-        with AuditContextManager(reason="blabla", impersonated_by="1"):
+        with AuditContextManager(reason="blabla", impersonated_by="12"):
             customer2.email = "jane2@example.com"
             customer2.age = 30
             customer2.data = {"preferences": {"newsletter": True}}

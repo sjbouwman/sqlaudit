@@ -3,7 +3,10 @@ from contextvars import ContextVar, Token
 from typing import Annotated
 from pydantic import BaseModel, Field
 
+from .config import get_config
+
 from .types import ResourceIdType
+
 
 class SQLAuditContext(BaseModel):
     changed_by: Annotated[
@@ -38,12 +41,13 @@ _sql_audit_context: ContextVar[SQLAuditContext] = ContextVar(
     "sql_audit_context", default=SQLAuditContext()
 )
 
+
 def set_audit_context(
     *,
     user_id: str | None = None,
     reason: str | None = None,
-    impersonated_by: str | None = None
-) -> None:
+    impersonated_by: str | None = None,
+) -> SQLAuditContext:
     """
     Update the current SQLAuditContext with new values. Will set a new state for the context variable.
 
@@ -54,12 +58,11 @@ def set_audit_context(
     """
     _sql_audit_context.set(
         SQLAuditContext(
-            changed_by=user_id,
-            reason=reason,
-            impersonated_by=impersonated_by
+            changed_by=user_id, reason=reason, impersonated_by=impersonated_by
         )
-        
     )
+
+    return _sql_audit_context.get()
 
 
 def clear_audit_context() -> None:
@@ -79,10 +82,9 @@ def get_audit_context() -> SQLAuditContext:
     return _sql_audit_context.get()
 
 
-
 class AuditContextManager(AbstractContextManager):
     """
-    A context manager for managing the SQLAuditContext. 
+    A context manager for managing the SQLAuditContext.
     Allows setting a new context for the duration of the context block, and automatically resets it afterwards.
 
     Usage:
@@ -91,9 +93,10 @@ class AuditContextManager(AbstractContextManager):
         ....
 
         db.flush()  # Ensure changes are committed so the hook can capture them
-        
+
     After exiting the context, the SQLAuditContext will be reset to its previous state.
     """
+
     def __init__(
         self,
         *,
@@ -101,11 +104,17 @@ class AuditContextManager(AbstractContextManager):
         reason: str | None = None,
         impersonated_by: ResourceIdType | None = None,
     ):
+        config = get_config()
+
+        if not user_id and callable(config.get_user_id_callback):
+            user_id = config.get_user_id_callback()
+
         self.new_context = SQLAuditContext(
-            changed_by=str(user_id),
+            changed_by=str(user_id) if user_id else None,
             reason=reason,
             impersonated_by=str(impersonated_by),
         )
+
         self.token: Token | None = None
 
     def __enter__(self) -> SQLAuditContext:

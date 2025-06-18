@@ -141,6 +141,19 @@ def test_full_audit_flow(db_session):
         )
 
         for record in audit_records:
+            assert isinstance(record, SQLAuditRecord), (
+                "Expected record to be an instance of SQLAuditRecord."
+            )
+
+            assert record.resource_id in [customer.id, customer2.id], (
+                f"Unexpected resource_id {record.resource_id} in audit record."
+            )
+
+            assert record.changed_by == str(test_user.user_id), (
+                f"Expected changed_by to be {test_user.user_id}, got {record.changed_by}."
+            )
+
+
             for change in record.changes:
                 assert isinstance(change, SQLAuditChange), (
                     "Expected change to be an instance of AuditChange."
@@ -148,5 +161,6 @@ def test_full_audit_flow(db_session):
                 assert change.field_name in ["name", "email", "created_by_user_id"], (
                     f"Unexpected field {change.field_name} in change."
                 )
+
 
 
