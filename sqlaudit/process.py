@@ -74,13 +74,6 @@ def _get_audit_log_field_from_table(
     if field_db:
         return field_db
 
-    # We need to create a new field entry
-    dtype = instance.__mapper__.columns[field].type.python_type.__name__
-    if dtype not in list(allowed_dtypes.keys()):
-        raise SQLAuditUnsupportedDataTypeError(
-            "Data type '%s' for field '%s' is not supported for auditing. Available types: %s"
-            % (dtype, field, ", ".join(allowed_dtypes.keys()))
-        )
 
     # We need to create a new field entry
     column = instance.__mapper__.columns.get(field)
