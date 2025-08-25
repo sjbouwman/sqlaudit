@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 type ResourceIdType = str | int | uuid.UUID
 
-_allowed_dtypes = {
+allowed_dtypes: dict[str, Any] = {
     "str": str,
     "int": int,
     "float": float,
@@ -49,11 +49,11 @@ class SQLAuditChange(BaseModel):
                 setattr(self, field, None)
                 continue
 
-            assert self.dtype in _allowed_dtypes, (
-                f"Unsupported dtype: {self.dtype}. Available types: {', '.join(_allowed_dtypes.keys())}"
+            assert self.dtype in allowed_dtypes, (
+                f"Unsupported dtype: {self.dtype}. Available types: {', '.join(allowed_dtypes.keys())}"
             )
 
-            target_type = _allowed_dtypes[self.dtype]
+            target_type = allowed_dtypes[self.dtype]
 
             setattr(self, field, target_type(value))
 
