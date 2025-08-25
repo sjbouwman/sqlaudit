@@ -68,17 +68,21 @@ def test_full_audit_flow(db_session):
     # We create a model instance to test with
 
     @track_table(
-        tracked_fields=["name", "email", "created_by_user_id"],
+        tracked_fields=["name", "email", "created_by_user_id", "barcode"],
         user_id_field="created_by_user_id",
     )
     class Customer(Base):
         __tablename__ = "customer"
-        id: Mapped[str] = mapped_column(
-            default=lambda: str(uuid.uuid4()), primary_key=True
+        id: Mapped[uuid.UUID] = mapped_column(
+            default=uuid.uuid4, primary_key=True
         )
         name: Mapped[str] = mapped_column()
         email: Mapped[str] = mapped_column()
         created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+
+        barcode: Mapped[uuid.UUID] = mapped_column(
+            unique=True, default=uuid.uuid4
+        )
 
         orders: Mapped[list["Order"]] = relationship(back_populates="customer")
 
@@ -88,10 +92,10 @@ def test_full_audit_flow(db_session):
     )
     class Order(Base):
         __tablename__ = "order"
-        id: Mapped[str] = mapped_column(
-            default=lambda: str(uuid.uuid4()), primary_key=True
+        id: Mapped[uuid.UUID] = mapped_column(
+            default=uuid.uuid4, primary_key=True
         )
-        customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+        customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customer.id"))
         total_amount: Mapped[float] = mapped_column()
 
         customer: Mapped["Customer"] = relationship(back_populates="orders")
@@ -161,7 +165,7 @@ def test_full_audit_flow(db_session):
                 "Expected record to be an instance of SQLAuditRecord."
             )
 
-            assert record.resource_id in [customer.id, customer2.id], (
+            assert record.resource_id in [str(customer.id), str(customer2.id)], (
                 f"Unexpected resource_id {record.resource_id} in audit record."
             )
 
@@ -174,7 +178,7 @@ def test_full_audit_flow(db_session):
                 assert isinstance(change, SQLAuditChange), (
                     "Expected change to be an instance of AuditChange."
                 )
-                assert change.field_name in ["name", "email", "created_by_user_id"], (
+                assert change.field_name in ["name", "email", "created_by_user_id", "barcode"], (
                     f"Unexpected field {change.field_name} in change."
                 )
 

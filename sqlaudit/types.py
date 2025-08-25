@@ -14,6 +14,7 @@ allowed_dtypes: dict[str, Any] = {
     "float": float,
     "bool": bool,
     "dict": json.loads,
+    "UUID": uuid.UUID,
 }
 
 

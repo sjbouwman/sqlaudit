@@ -7,6 +7,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
 
+from sqlaudit._internals.logger import logger
 from sqlaudit._internals.types import AuditChange
 from sqlaudit.exceptions import SQLAuditUnsupportedDataTypeError
 from sqlaudit._internals.models import SQLAuditLogField, SQLAuditLogTable
@@ -88,7 +89,7 @@ def _get_audit_log_field_from_table(
             f"Could not determine the data type for column '{field}': {column.type}."
         )
         dtype = None
-
+    
     if dtype not in list(allowed_dtypes.keys()):
         raise SQLAuditUnsupportedDataTypeError(
             "Data type '%s' for field '%s' is not supported for auditing. Available types: %s"
@@ -100,8 +101,9 @@ def _get_audit_log_field_from_table(
         table_id=table.table_id,
         field_name=field,
         table=table,
-        dtype=instance.__mapper__.columns[field].type.python_type.__name__,
+        dtype=dtype,
     )
+
     session.add(field_db)
 
     return field_db
@@ -116,7 +118,6 @@ def _register_entry_changes(
     Registers the changes of a single entry in the audit log.
     This function is called for each entry in the audit change buffer.
     """
-
     if not entry.changes:
         return
 
@@ -212,7 +213,7 @@ def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
     """
     changes: list[AuditChange] = []
 
-    entry = audit_model_registry.get(instance)
+    entry: Any = audit_model_registry.get(instance)
     if entry is None:
         warnings.warn(
             f"Model {instance.__class__.__name__} is not registered in SQLAudit registry.",
