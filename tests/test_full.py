@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 from sqlalchemy import ForeignKey, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker, relationship
 from tzlocal import get_localzone, get_localzone_name
 
 from sqlaudit.config import (
@@ -79,6 +79,22 @@ def test_full_audit_flow(db_session):
         name: Mapped[str] = mapped_column()
         email: Mapped[str] = mapped_column()
         created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+
+        orders: Mapped[list["Order"]] = relationship(back_populates="customer")
+
+    @track_table(
+        tracked_fields=["customer_id", "total_amount"],
+        user_id_field="created_by_user_id",
+    )
+    class Order(Base):
+        __tablename__ = "order"
+        id: Mapped[str] = mapped_column(
+            default=lambda: str(uuid.uuid4()), primary_key=True
+        )
+        customer_id: Mapped[str] = mapped_column(ForeignKey("customer.id"))
+        total_amount: Mapped[float] = mapped_column()
+
+        customer: Mapped["Customer"] = relationship(back_populates="orders")
 
     config = SQLAuditConfig(
         session_factory=lambda: get_db(db_session),
