@@ -42,8 +42,11 @@ class AuditChangeBuffer:
 
     def __init__(self):
         self._audit_change_buffer: dict[
-            type[DeclarativeBase], list[AuditBufferEntry]
+            DeclarativeBase, list[AuditBufferEntry]
         ] = {}
+
+
+        
 
     def add(
         self,
@@ -62,12 +65,12 @@ class AuditChangeBuffer:
         entry = AuditBufferEntry(
             changes=changes, log_context=context, instance=instance
         )
-
+        print(f"ID: {id(instance)} -> {instance.__class__}")
         if instance not in self._audit_change_buffer:
-            self._audit_change_buffer[instance.__class__] = [entry]
+            self._audit_change_buffer[instance] = [entry]
 
         else:
-            self._audit_change_buffer[instance.__class__].append(entry)
+            self._audit_change_buffer[instance].append(entry)
 
     def clear(self):
         """
@@ -97,4 +100,4 @@ class AuditChangeBuffer:
         """
         Check if the buffer contains changes for a specific instance.
         """
-        return instance.__class__ in self._audit_change_buffer
+        return instance in self._audit_change_buffer

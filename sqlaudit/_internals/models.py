@@ -1,16 +1,24 @@
 import datetime
+from typing import Any, List, get_args
 import uuid
 
-from sqlalchemy import TIMESTAMP, ForeignKey, String
+from sqlalchemy import TIMESTAMP, ForeignKey, String, inspect
+from sqlalchemy.engine.interfaces import ReflectedColumn
 from sqlalchemy.ext.hybrid import hybrid_property
+
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
     relationship,
+    object_session,
+    registry,
+    
 )
 
 from uuid_utils import uuid7
+from sqlaudit._internals.registry import audit_model_registry
+
 def uuid7_stdlib():
     return uuid.UUID(bytes=uuid7().bytes)
 
@@ -34,9 +42,11 @@ class SQLAuditLogField(SQLAuditBase):
 
     field_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditTables.table_id"))
-    
+
     field_name: Mapped[str] = mapped_column(String)
-    dtype: Mapped[str] = mapped_column(String) # Data type of the field, e.g., "string", "integer", "json", etc.
+    dtype: Mapped[str] = mapped_column(
+        String
+    )  # Data type of the field, e.g., "string", "integer", "json", etc.
 
     table: Mapped["SQLAuditLogTable"] = relationship(
         back_populates="fields",
@@ -47,7 +57,7 @@ class SQLAuditLog(SQLAuditBase):
     __tablename__ = "SQLAuditLogs"
 
     record_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid7_stdlib)
-    
+
     table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditTables.table_id"))
     table: Mapped["SQLAuditLogTable"] = relationship()
 
@@ -55,7 +65,7 @@ class SQLAuditLog(SQLAuditBase):
     timestamp: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP,
     )
-    
+
     changed_by: Mapped[str | None] = mapped_column(String(256))
     impersonated_by: Mapped[str | None] = mapped_column(String(256))
     reason: Mapped[str | None] = mapped_column(String(512))
@@ -78,13 +88,12 @@ class SQLAuditLogFieldChange(SQLAuditBase):
     __tablename__ = "SQLAuditFieldChanges"
 
     change_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    
+
     record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditLogs.record_id"))
 
     field_id: Mapped[int] = mapped_column(ForeignKey("SQLAuditFields.field_id"))
     field: Mapped["SQLAuditLogField"] = relationship()
 
-    
     old_value: Mapped[str | None] = mapped_column()
     new_value: Mapped[str | None] = mapped_column()
 
@@ -92,17 +101,32 @@ class SQLAuditLogFieldChange(SQLAuditBase):
         back_populates="field_changes",
     )
 
-
     @hybrid_property
     def field_name(self) -> str:
         """
         Returns the name of the field associated with this change.
         """
         return self.field.field_name
-    
+
     @hybrid_property
-    def dtype(self) -> str:
+    def dtype(self) -> Any:
         """
         Returns the data type of the field associated with this change.
         """
         return self.field.dtype
+    
+    @hybrid_property
+    def python_type(self) -> Any:
+        """
+        Returns the data type of the field associated with this change.
+        """
+
+        model = audit_model_registry.from_table_name(self.field.table.table_name).table_model
+
+        annotations = model.__annotations__.get(self.field.field_name)
+        if not annotations:
+            return None
+                    
+        inner_type = get_args(annotations)
+        
+        return inner_type[0]

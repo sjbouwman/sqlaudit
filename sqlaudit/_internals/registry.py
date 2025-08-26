@@ -121,5 +121,14 @@ class AuditRegistry:
         """
         self._registry.clear()
 
+    def from_table_name(self, table_name: str) -> AuditTableEntry:
+        """
+        Get the registered options for a table model by its table name.
+        """
+        if table_name not in self._registry:
+            raise KeyError(f"Table {table_name} is not registered for auditing.")
+
+        return self._registry[table_name]
+
 
 audit_model_registry = AuditRegistry()

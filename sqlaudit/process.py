@@ -12,6 +12,7 @@ from sqlaudit._internals.types import AuditChange
 from sqlaudit.exceptions import SQLAuditUnsupportedDataTypeError
 from sqlaudit._internals.models import SQLAuditLogField, SQLAuditLogTable
 from sqlaudit._internals.registry import audit_model_registry
+from sqlaudit.serializer import Serializer
 from sqlaudit.types import allowed_dtypes
 from sqlaudit._internals.utils import add_audit_change, add_audit_log
 
@@ -75,7 +76,6 @@ def _get_audit_log_field_from_table(
     if field_db:
         return field_db
 
-
     # We need to create a new field entry
     column = instance.__mapper__.columns.get(field)
     if column is None:
@@ -89,13 +89,12 @@ def _get_audit_log_field_from_table(
             f"Could not determine the data type for column '{field}': {column.type}."
         )
         dtype = None
-    
+
     if dtype not in list(allowed_dtypes.keys()):
         raise SQLAuditUnsupportedDataTypeError(
             "Data type '%s' for field '%s' is not supported for auditing. Available types: %s"
             % (dtype, field, ", ".join(allowed_dtypes.keys()))
         )
-
 
     field_db = SQLAuditLogField(
         table_id=table.table_id,
@@ -173,6 +172,7 @@ def register_change(
     )
 
     for entry in entries:
+        print(entry.changes)
         _register_entry_changes(
             entry=entry,
             session=session,
@@ -180,71 +180,57 @@ def register_change(
         )
 
 
-def _audit_changes_values_encoder(value: Any) -> str | None:
-    """
-    An encoder for values in audit changes.
-    It converts various data types to a string representation, as this is the type we use in DB.
-    """
-    if value is None:
-        return None
-
-    try:
-        if isinstance(value, (str, int, float, uuid.UUID)):
-            return str(value)
-
-        elif isinstance(value, (list, tuple, dict)):
-            return json.dumps(value, default=str)
-
-        else:
-            return str(value)
-
-    except Exception as e:
-        warnings.warn(
-            f"Could not encode value {value!r} of type {type(value).__name__}: {e}",
-            category=RuntimeWarning,
-        )
-
-        return None
-
-
-def get_changes(instance: DeclarativeBase) -> list[AuditChange]:
+def get_changes(instance: DeclarativeBase, is_new_instance: bool) -> list[AuditChange]:
     """
     Detects changes to tracked fields of the given object and registers them in the audit log.
     """
-    changes: list[AuditChange] = []
 
-    entry: Any = audit_model_registry.get(instance)
-    if entry is None:
+    try:
+        entry = audit_model_registry.get(instance)
+
+    except KeyError:
         warnings.warn(
             f"Model {instance.__class__.__name__} is not registered in SQLAudit registry.",
             category=RuntimeWarning,
         )
-        return changes
+        return []
 
-    tracked_fields = entry.options.tracked_fields or entry.trackable_fields
-
-    for field in tracked_fields:
+    changes: list[AuditChange] = []
+    for field in entry.options.tracked_fields or entry.trackable_fields:
         if not hasattr(instance, field):
+            warnings.warn(
+                f"Tracked field {field} does not exist on model {instance.__class__.__name__}.",
+                category=RuntimeWarning,
+            )
             continue
 
         history = get_history(obj=instance, key=field)
 
-        if not history.has_changes():
-            continue
-
-        old_state_list = list(history.deleted) + list(history.unchanged)
-        new_state_list = list(history.added) + list(history.unchanged)
-
-        # We convert the lists to single values or None if they are empty
-        old_state = old_state_list[0] if old_state_list else None
-        new_state = new_state_list[0] if new_state_list else None
-
-        if old_state != new_state:
+        # If we have a new instance we can shortcut the history check as all rows are new
+        if is_new_instance:
             changes.append(
                 AuditChange(
                     field=field,
-                    old_value=_audit_changes_values_encoder(old_state),
-                    new_value=_audit_changes_values_encoder(new_state),
+                    old_value=None,
+                    new_value=Serializer.serialize(
+                        next(iter(list(history.added) + list(history.unchanged)), None)
+                    ),
+                )
+            )
+            continue
+
+        if not history.has_changes():
+            continue
+
+        old_state = next(iter(list(history.deleted) + list(history.unchanged)), None)
+        new_state = next(iter(list(history.added) + list(history.unchanged)), None)
+
+        if old_state != new_state and (old_state is not None and new_state is not None):
+            changes.append(
+                AuditChange(
+                    field=field,
+                    old_value=Serializer.serialize(old_state),
+                    new_value=Serializer.serialize(new_state),
                 )
             )
 

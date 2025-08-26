@@ -1,12 +1,19 @@
+import builtins
+from collections.abc import Callable
 import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Callable, Self
+import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import Column
 
+from sqlaudit.serializer import Serializer
 type ResourceIdType = str | int | uuid.UUID
+
+
 
 allowed_dtypes: dict[str, Any] = {
     "str": str,
@@ -15,6 +22,7 @@ allowed_dtypes: dict[str, Any] = {
     "bool": bool,
     "dict": json.loads,
     "UUID": uuid.UUID,
+    "datetime": datetime.fromisoformat
 }
 
 
@@ -38,6 +46,8 @@ class SQLAuditChange(BaseModel):
         Any, Field(description="List of string values after the change")
     ]
 
+    python_type: Annotated[type, Field(description="The Python type of the field", validation_alias="python_type")]
+
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
         """
@@ -54,9 +64,16 @@ class SQLAuditChange(BaseModel):
                 f"Unsupported dtype: {self.dtype}. Available types: {', '.join(allowed_dtypes.keys())}"
             )
 
-            target_type = allowed_dtypes[self.dtype]
+            print(f"Fields self {self}")
 
-            setattr(self, field, target_type(value))
+            expected_type = self.python_type
+            Serializer.deserialize(value, expected_type)
+
+            converted = Serializer.deserialize(value, expected_type)
+
+            print(f"Converted {field} value: {converted} (type: {type(converted)})")
+
+            setattr(self, field, converted)
 
         return self
 
@@ -128,13 +145,13 @@ class SQLAuditOptions:
 
     def __post_init__(self):
         if self.tracked_fields is not None:
-                if not isinstance(self.tracked_fields, list) or not all(
-                    isinstance(field, str) for field in self.tracked_fields
-                ):
-                    raise TypeError(
-                        "SQLAuditOptions.tracked_fields must be either None or a list of strings. "
-                        f"Got {type(self.tracked_fields).__name__}."
-                    )
+            if not isinstance(self.tracked_fields, list) or not all(
+                isinstance(field, str) for field in self.tracked_fields
+            ):
+                raise TypeError(
+                    "SQLAuditOptions.tracked_fields must be either None or a list of strings. "
+                    f"Got {type(self.tracked_fields).__name__}."
+                )
         if (
             not isinstance(self.resource_id_field, str)
             and self.resource_id_field is not None
