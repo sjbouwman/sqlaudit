@@ -61,16 +61,10 @@ def get_resource_changes(
         audit_log_table = get_audit_log_table_or_raise(
             session, table_model.__tablename__
         )
-        print(audit_log_table.table_name)
 
         audit_log_fields = get_filtered_audit_fields(
             session, audit_log_table.table_id, filter_fields
         )
-
-        print(f"\n\nProcessing table {audit_log_table.table_name}({audit_log_table.table_id}) with fields:")
-        for field in audit_log_fields:
-            print(f"  Field: {field.field_name}({field.field_id}): {field.dtype}")
-
 
         field_map = build_field_map(audit_log_fields)
 

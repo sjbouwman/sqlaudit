@@ -2,10 +2,17 @@ import datetime
 import uuid
 
 import pytest
-from sqlalchemy import ForeignKey, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker, relationship
-from tzlocal import get_localzone, get_localzone_name
+from sqlalchemy import UUID, ForeignKey, create_engine, String, TypeDecorator
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    sessionmaker,
+)
+from tzlocal import get_localzone
 
+from sqlaudit._internals.models import SQLAuditLogField
 from sqlaudit.config import (
     SQLAuditConfig,
     _clear_config,
@@ -20,6 +27,22 @@ from sqlaudit._internals.registry import audit_model_registry
 from tests.utils.db import create_user_model
 
 
+class EmptyStringToNone(TypeDecorator):
+    """Custom type to convert empty strings to None. Used for example one Barcodes where empty string is not allowed"""
+
+    impl = String(256)  # Use String as the underlying implementation
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        # Convert empty string to None before saving to the database
+        if value == "":
+            return None
+        return value
+
+    def process_result_value(self, value, dialect):
+        # No modification needed when reading from the database
+        return value
+
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -27,6 +50,7 @@ def db_session():
     Fixture that provides a fresh in-memory database and DeclarativeBase for each test.
     Returns a tuple of (SessionLocal, Base).
     """
+
     class Base(DeclarativeBase): ...
 
     url = "sqlite:///:memory:"
@@ -35,8 +59,8 @@ def db_session():
 
     yield SessionLocal, Base
     audit_model_registry.clear()
-   
-   
+
+
 def get_db(db_session):
     """Helper function to get a database session."""
     SessionLocal, _ = db_session
@@ -45,6 +69,7 @@ def get_db(db_session):
         yield db
     finally:
         db.close()
+
 
 def test_full_audit_flow(db_session):
     """
@@ -68,37 +93,31 @@ def test_full_audit_flow(db_session):
     # We create a model instance to test with
 
     @track_table(
-        tracked_fields=["name", "email", "created_by_user_id", "barcode"],
+        tracked_fields=[
+            "name",
+            "email",
+            "created_by_user_id",
+            "barcode",
+            "created_at",
+            "rating",
+        ],
         user_id_field="created_by_user_id",
     )
     class Customer(Base):
         __tablename__ = "customer"
-        id: Mapped[uuid.UUID] = mapped_column(
-            default=uuid.uuid4, primary_key=True
-        )
+        id: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, primary_key=True)
         name: Mapped[str] = mapped_column()
         email: Mapped[str] = mapped_column()
         created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+        created_at: Mapped[datetime.datetime] = mapped_column(
+            default=datetime.datetime.now
+        )
 
         barcode: Mapped[uuid.UUID] = mapped_column(
-            unique=True, default=uuid.uuid4
+            UUID(as_uuid=True), unique=True, default=uuid.uuid4
         )
 
-        orders: Mapped[list["Order"]] = relationship(back_populates="customer")
-
-    @track_table(
-        tracked_fields=["customer_id", "total_amount"],
-        user_id_field="created_by_user_id",
-    )
-    class Order(Base):
-        __tablename__ = "order"
-        id: Mapped[uuid.UUID] = mapped_column(
-            default=uuid.uuid4, primary_key=True
-        )
-        customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customer.id"))
-        total_amount: Mapped[float] = mapped_column()
-
-        customer: Mapped["Customer"] = relationship(back_populates="orders")
+        rating: Mapped[float] = mapped_column(default=0.5)
 
     config = SQLAuditConfig(
         session_factory=lambda: get_db(db_session),
@@ -131,24 +150,16 @@ def test_full_audit_flow(db_session):
         # Add the customer to the session
         session.add(customer)
 
-        customer2 = Customer(
-            name="John Doe",
-            email="johndoe@example.com",
-            created_by_user_id=test_user.user_id,
-        )
-
         # Add the second customer to the session
-        session.add(customer2)
         session.commit()
 
         session.refresh(customer)
-        session.refresh(customer2)
 
         # At this point, the audit change buffer should have collected changes
         tz = get_localzone()
         audit_records = get_resource_changes(
             Customer,
-            filter_resource_ids=[customer2.id, customer.id],
+            filter_resource_ids=[customer.id],
             filter_date_range=(
                 datetime.datetime.now(tz=tz) + datetime.timedelta(hours=-1),
                 datetime.datetime.now(tz=tz),
@@ -165,7 +176,7 @@ def test_full_audit_flow(db_session):
                 "Expected record to be an instance of SQLAuditRecord."
             )
 
-            assert record.resource_id in [str(customer.id), str(customer2.id)], (
+            assert record.resource_id in [str(customer.id)], (
                 f"Unexpected resource_id {record.resource_id} in audit record."
             )
 
@@ -173,14 +184,29 @@ def test_full_audit_flow(db_session):
                 f"Expected changed_by to be {test_user.user_id}, got {record.changed_by}."
             )
 
+            required_fields = [
+                "name",
+                "email",
+                "created_by_user_id",
+                "rating",
+                "barcode",
+                "created_at",
+            ]
+            assert len(required_fields) == len(record.changes), (
+                f"Unexpected number of changes for record {record.record_id}: {len(record.changes)}"
+            )
+
+            for field in required_fields:
+                assert any(change.field_name == field for change in record.changes), (
+                    f"Expected change for field {field} in record {record.record_id}."
+                )
 
             for change in record.changes:
+                print(change)
                 assert isinstance(change, SQLAuditChange), (
                     "Expected change to be an instance of AuditChange."
                 )
-                assert change.field_name in ["name", "email", "created_by_user_id", "barcode"], (
+                assert change.field_name in required_fields, (
                     f"Unexpected field {change.field_name} in change."
                 )
-
-
 

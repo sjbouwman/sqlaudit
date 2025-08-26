@@ -1,9 +1,8 @@
 import datetime
-from typing import Any, List, get_args
+from typing import Any, get_args
 import uuid
 
-from sqlalchemy import TIMESTAMP, ForeignKey, String, inspect
-from sqlalchemy.engine.interfaces import ReflectedColumn
+from sqlalchemy import TIMESTAMP, ForeignKey, String
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from sqlalchemy.orm import (
@@ -11,8 +10,6 @@ from sqlalchemy.orm import (
     Mapped,
     mapped_column,
     relationship,
-    object_session,
-    registry,
     
 )
 
@@ -44,9 +41,6 @@ class SQLAuditLogField(SQLAuditBase):
     table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("SQLAuditTables.table_id"))
 
     field_name: Mapped[str] = mapped_column(String)
-    dtype: Mapped[str] = mapped_column(
-        String
-    )  # Data type of the field, e.g., "string", "integer", "json", etc.
 
     table: Mapped["SQLAuditLogTable"] = relationship(
         back_populates="fields",
@@ -108,12 +102,6 @@ class SQLAuditLogFieldChange(SQLAuditBase):
         """
         return self.field.field_name
 
-    @hybrid_property
-    def dtype(self) -> Any:
-        """
-        Returns the data type of the field associated with this change.
-        """
-        return self.field.dtype
     
     @hybrid_property
     def python_type(self) -> Any:

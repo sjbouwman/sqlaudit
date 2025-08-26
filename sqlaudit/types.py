@@ -1,14 +1,10 @@
-import builtins
-from collections.abc import Callable
 import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, Any, Callable, Self
-import warnings
+from typing import Annotated, Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import Column
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from sqlaudit.serializer import Serializer
 type ResourceIdType = str | int | uuid.UUID
@@ -33,10 +29,7 @@ class SQLAuditChange(BaseModel):
 
     field_name: Annotated[str, Field(description="Name of the field that was changed")]
 
-    dtype: Annotated[
-        str,
-        Field(description="Data type of the field, e.g., 'string', 'integer', etc."),
-    ]
+
 
     old_value: Annotated[
         Any, Field(description="List of string values before the change")
@@ -60,22 +53,17 @@ class SQLAuditChange(BaseModel):
                 setattr(self, field, None)
                 continue
 
-            assert self.dtype in allowed_dtypes, (
-                f"Unsupported dtype: {self.dtype}. Available types: {', '.join(allowed_dtypes.keys())}"
-            )
-
-            print(f"Fields self {self}")
-
             expected_type = self.python_type
             Serializer.deserialize(value, expected_type)
 
-            converted = Serializer.deserialize(value, expected_type)
-
-            print(f"Converted {field} value: {converted} (type: {type(converted)})")
-
-            setattr(self, field, converted)
+            setattr(self, field, Serializer.deserialize(value, expected_type))
 
         return self
+    
+    @computed_field
+    @property
+    def dtype(self) -> str:
+        return self.python_type.__name__
 
     model_config = ConfigDict(from_attributes=True)
 

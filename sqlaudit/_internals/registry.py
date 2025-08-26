@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from typing import get_args
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import DeclarativeBase, RelationshipProperty
 
 from sqlaudit._internals.logger import logger
 from sqlaudit.exceptions import SQLAuditTableAlreadyRegisteredError
+from sqlaudit.serializer import Serializer
 from sqlaudit.types import SQLAuditOptions
 
 
@@ -12,11 +14,25 @@ def _discover_trackable_fields(table_model: type[DeclarativeBase]) -> list[str]:
     """
     Discover fields in the table model that are trackable for auditing. Trackable fields are all columns that are not relationship properties.
     """
-    return [
-        x.name
-        for x in inspect(table_model).c
-        if not isinstance(x, RelationshipProperty)
-    ]
+
+    fields = [x for x in inspect(table_model).c if not isinstance(x, RelationshipProperty)]
+
+    # We make sure that we can serialize and deserialize all the tracked fields.
+    for field in fields:
+        annotations = table_model.__annotations__.get(field.name)
+        if not annotations  :
+            raise ValueError(
+                f"Field '{field.name}' is not annotated in the model {table_model.__name__}."
+            )
+        
+        inner_type = get_args(annotations)[0]
+        
+        if not Serializer.has_handler(inner_type):
+            raise ValueError(
+                f"Field '{field.name}' in model {table_model.__name__} is of type {inner_type} which is not a known type. Please register a serializer for this type using `Serializer.register_custom_handler()`."
+            )
+
+    return [x.name for x in fields]
 
 
 def _validate_tracked_fields(

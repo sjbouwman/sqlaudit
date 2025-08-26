@@ -1,9 +1,3 @@
-
-
-
-
-
-
 from collections.abc import Callable
 from dataclasses import dataclass
 import datetime
@@ -111,3 +105,10 @@ class Serializer:
         if value is None:
             return True
         return cls.get_handler(type(value)) is not None
+    
+    @classmethod
+    def has_handler(cls, target_type: type) -> bool:
+        """
+        Checks if a handler exists for a specific type
+        """
+        return cls.get_handler(target_type) is not None

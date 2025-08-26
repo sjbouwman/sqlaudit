@@ -2,8 +2,6 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import DeclarativeBase
 
-from sqlaudit.exceptions import SQLAuditTableAlreadyRegisteredError
-from sqlaudit._internals.logger import logger
 
 
 

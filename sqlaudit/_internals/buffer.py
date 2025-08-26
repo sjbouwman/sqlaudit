@@ -65,7 +65,6 @@ class AuditChangeBuffer:
         entry = AuditBufferEntry(
             changes=changes, log_context=context, instance=instance
         )
-        print(f"ID: {id(instance)} -> {instance.__class__}")
         if instance not in self._audit_change_buffer:
             self._audit_change_buffer[instance] = [entry]
 

@@ -1,19 +1,14 @@
-import json
-from typing import TYPE_CHECKING, Any
-import uuid
+from typing import TYPE_CHECKING
 import warnings
 
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm.attributes import get_history
 from sqlalchemy.orm.session import Session
 
-from sqlaudit._internals.logger import logger
 from sqlaudit._internals.types import AuditChange
-from sqlaudit.exceptions import SQLAuditUnsupportedDataTypeError
 from sqlaudit._internals.models import SQLAuditLogField, SQLAuditLogTable
 from sqlaudit._internals.registry import audit_model_registry
 from sqlaudit.serializer import Serializer
-from sqlaudit.types import allowed_dtypes
 from sqlaudit._internals.utils import add_audit_change, add_audit_log
 
 if TYPE_CHECKING:
@@ -81,26 +76,11 @@ def _get_audit_log_field_from_table(
     if column is None:
         raise ValueError(f"Column '{field}' does not exist in the instance's mapper.")
 
-    try:
-        dtype = column.type.python_type.__name__
-
-    except NotImplementedError:
-        warnings.warn(
-            f"Could not determine the data type for column '{field}': {column.type}."
-        )
-        dtype = None
-
-    if dtype not in list(allowed_dtypes.keys()):
-        raise SQLAuditUnsupportedDataTypeError(
-            "Data type '%s' for field '%s' is not supported for auditing. Available types: %s"
-            % (dtype, field, ", ".join(allowed_dtypes.keys()))
-        )
 
     field_db = SQLAuditLogField(
         table_id=table.table_id,
         field_name=field,
         table=table,
-        dtype=dtype,
     )
 
     session.add(field_db)
@@ -172,7 +152,6 @@ def register_change(
     )
 
     for entry in entries:
-        print(entry.changes)
         _register_entry_changes(
             entry=entry,
             session=session,

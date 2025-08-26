@@ -2,7 +2,6 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from sqlalchemy.orm import DeclarativeBase
-from sqlaudit._internals.logger import logger
 from sqlaudit._internals.registry import audit_model_registry
 from sqlaudit.types import SQLAuditOptions
 
