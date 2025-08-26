@@ -108,7 +108,7 @@ class _SQLAuditConfigManager:
         return f"SQLAuditConfigManager(config={self._config})"
 
 
-_audit_config = _SQLAuditConfigManager()
+audit_config = _SQLAuditConfigManager()
 
 
 def has_config() -> bool:
@@ -117,7 +117,7 @@ def has_config() -> bool:
     Returns:
         bool: True if the configuration is set, False otherwise.
     """
-    return _audit_config._config is not None
+    return audit_config._config is not None
 
 
 def set_config(config: SQLAuditConfig) -> None:
@@ -129,7 +129,7 @@ def set_config(config: SQLAuditConfig) -> None:
     Args:
         config (SQLAuditConfig): The configuration object.
     """
-    _audit_config.set_config(config=config)
+    audit_config.set_config(config=config)
 
 
 def get_config() -> SQLAuditConfig:
@@ -142,10 +142,10 @@ def get_config() -> SQLAuditConfig:
     Raises:
         SQLAuditConfigError: If no configuration has been set.
     """
-    return _audit_config.get_config()
+    return audit_config.get_config()
 
 
-def _clear_config() -> None:
+def clear_config() -> None:
     """
     Clear the current SQLAudit configuration.
 
@@ -153,7 +153,7 @@ def _clear_config() -> None:
         This should only be used in testing or application shutdown. 
         Once cleared, `get_config()` will raise until a new config is set.
     """
-    _audit_config._config = None
+    audit_config._config = None
 
 
 __all__ = [

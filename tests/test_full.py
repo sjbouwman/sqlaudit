@@ -2,7 +2,7 @@ import datetime
 import uuid
 
 import pytest
-from sqlalchemy import UUID, ForeignKey, create_engine, String, TypeDecorator
+from sqlalchemy import UUID, ForeignKey, String, TypeDecorator, create_engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -12,36 +12,18 @@ from sqlalchemy.orm import (
 )
 from tzlocal import get_localzone
 
-from sqlaudit._internals.models import SQLAuditLogField
+from sqlaudit._internals.registry import audit_model_registry
+from sqlaudit._internals.utils import get_user_id_from_instance
 from sqlaudit.config import (
     SQLAuditConfig,
-    _clear_config,
+    clear_config,
     set_config,
 )
 from sqlaudit.decorators import track_table
 from sqlaudit.hooks import register_hooks
 from sqlaudit.retrieval import get_resource_changes
 from sqlaudit.types import SQLAuditChange, SQLAuditRecord
-from sqlaudit._internals.utils import get_user_id_from_instance
-from sqlaudit._internals.registry import audit_model_registry
 from tests.utils.db import create_user_model
-
-
-class EmptyStringToNone(TypeDecorator):
-    """Custom type to convert empty strings to None. Used for example one Barcodes where empty string is not allowed"""
-
-    impl = String(256)  # Use String as the underlying implementation
-    cache_ok = True
-
-    def process_bind_param(self, value, dialect):
-        # Convert empty string to None before saving to the database
-        if value == "":
-            return None
-        return value
-
-    def process_result_value(self, value, dialect):
-        # No modification needed when reading from the database
-        return value
 
 
 @pytest.fixture(scope="function")
@@ -79,7 +61,7 @@ def test_full_audit_flow(db_session):
     SessionLocal, Base = db_session
 
     # Clear any existing configuration
-    _clear_config()
+    clear_config()
 
     User = create_user_model(Base)
 

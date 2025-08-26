@@ -3,8 +3,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlaudit.config import (
     SQLAuditConfig,
-    _audit_config,
-    _clear_config,
+    audit_config,
+    clear_config,
     get_config,
     has_config,
     set_config,
@@ -223,7 +223,7 @@ def test_clear_config(db_session):
     assert has_config() is True
 
     # Clear the configuration
-    _clear_config()
+    clear_config()
 
     # Verify configuration is cleared
     assert has_config() is False
@@ -262,7 +262,7 @@ def test_get_config_without_setting():
     """
     Test get_config raises an error when no configuration is set.
     """
-    _clear_config()  # Ensure no configuration is set
+    clear_config()  # Ensure no configuration is set
     with pytest.raises(SQLAuditConfigError):
         get_config()
 
@@ -295,7 +295,7 @@ def test_get_config_repr(db_session):
     set_config(config)
 
     # We check if printing _audit_config gives the expected output
-    config_repr = repr(_audit_config)
+    config_repr = repr(audit_config)
     assert config_repr.startswith("SQLAuditConfigManager"), (
         f"The __repr__ method of SQLAuditConfigManager should start with 'SQLAuditConfigManager'. Got: {config_repr}"
     )
