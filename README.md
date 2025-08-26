@@ -417,3 +417,49 @@ with AuditContextManager(user_id=1, reason="Testing", impersonated_by=2):
 
 # State is reset back to the previous context 
 ```
+
+### `Serializers`
+The `Serializers` class provides automatic serialization and deserialization of values stored in the audit tables. Common Python types such as `int`, `float`, `str`, `bool`, `list`, `dict`, `datetime`, and `UUID` are supported out of the box. For custom types, you **must** register your own handlers using `Serializers.register_custom_handler()`, which will override the built-in behavior. This makes auditing simpler, ensures correct type restoration, and reduces the need for manual conversions.
+
+#### Example Usage
+```python
+import json
+import uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlaudit.serializers import Serializer, TypeHandler
+from sqlaudit.decorators import track_table
+
+# Example of a custom type
+class CustomType:
+    def __init__(self, value: int):
+        self.value = value
+
+    def __repr__(self):
+        return f"CustomType(value={self.value})"
+
+# Register a custom serializer and deserializer for the CustomType
+Serializer.register_custom_handler(
+    CustomType,
+    TypeHandler(
+        serialize=lambda v: json.dumps({"value": v.value}),
+        deserialize=lambda v: CustomType(**json.loads(v))
+    )
+)
+
+# Example SQLAlchemy base class
+class Base(DeclarativeBase):
+    pass
+
+# Example of a model using the custom type with auditing enabled
+@track_table(tracked_fields=["my_custom_type"])
+class Foo(Base):
+    __tablename__ = "foo"
+
+    id: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, primary_key=True)
+    my_custom_type: Mapped[CustomType] = mapped_column()
+
+# Example usage:
+# foo_instance = Foo(my_custom_type=CustomType(42))
+# db.add(foo_instance)
+# db.commit()
+```
