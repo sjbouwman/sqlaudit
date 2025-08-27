@@ -10,7 +10,6 @@ from sqlalchemy.orm import (
     Mapped,
     mapped_column,
     relationship,
-    
 )
 
 from uuid_utils import uuid7

@@ -155,7 +155,7 @@ class SQLAuditOptions:
                 % type(self.user_id_field).__name__
             )
 
-        if self.table_label is not None:
+        if self.table_label is not None and not isinstance(self.table_label, str):
             raise TypeError(
                 "SQLAuditOptions.table_label must be a 'str' or 'None'. Got %r."
                 % type(self.table_label).__name__

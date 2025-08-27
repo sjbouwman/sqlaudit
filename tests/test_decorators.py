@@ -106,3 +106,28 @@ def test_decorator_not_existing_tracked_field(db_session):
             id: Mapped[int] = mapped_column(primary_key=True)
             name: Mapped[str] = mapped_column()
 
+def test_decorator_with_table_label(db_session):
+    _, Base = db_session
+
+    @track_table(tracked_fields=["name", "email", "created_by_user_id"], table_label="Customer")
+    class Customer(Base):
+        __tablename__ = "customer"
+        id: Mapped[int] = mapped_column(primary_key=True)
+        name: Mapped[str] = mapped_column()
+        email: Mapped[str] = mapped_column()
+        created_by_user_id: Mapped[int] = mapped_column()
+
+def test_decorator_with_invalid_table_label(db_session):
+    _, Base = db_session
+
+    # Should raise a TypeError
+
+
+    with pytest.raises(TypeError):
+        @track_table(tracked_fields=["name", "email", "created_by_user_id"], table_label=123)
+        class Customer(Base):
+            __tablename__ = "customer"
+            id: Mapped[int] = mapped_column(primary_key=True)
+            name: Mapped[str] = mapped_column()
+            email: Mapped[str] = mapped_column()
+            created_by_user_id: Mapped[int] = mapped_column()
