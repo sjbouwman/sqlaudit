@@ -419,7 +419,7 @@ with AuditContextManager(user_id=1, reason="Testing", impersonated_by=2):
 ```
 
 ### `Serializers`
-The `Serializers` class provides automatic serialization and deserialization of values stored in the audit tables. Common Python types such as `int`, `float`, `str`, `bool`, `list`, `dict`, `datetime`, and `UUID` are supported out of the box. For custom types, you **must** register your own handlers using `Serializers.register_custom_handler()`, which will override the built-in behavior. This makes auditing simpler, ensures correct type restoration, and reduces the need for manual conversions.
+The `Serializers` class provides automatic serialization and deserialization of values stored in the audit tables. Common Python types such as `int`, `float`, `str`, `bool`, `list`, `dict`, `datetime`, and `UUID` are supported out of the box. For custom types, you <ins>must</ins> register your own handlers using `Serializers.register_custom_handler()`, which will override the built-in behavior. This makes auditing simpler, ensures correct type restoration, and reduces the need for manual conversions.
 
 #### Example Usage
 ```python
