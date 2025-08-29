@@ -2,7 +2,7 @@ import datetime
 import uuid
 
 import pytest
-from sqlalchemy import UUID, ForeignKey, String, TypeDecorator, create_engine
+from sqlalchemy import UUID, ForeignKey, create_engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,

@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, get_args
+from typing import Any
 import uuid
 
 from sqlalchemy import TIMESTAMP, ForeignKey, String
@@ -103,17 +103,15 @@ class SQLAuditLogFieldChange(SQLAuditBase):
 
     
     @hybrid_property
-    def python_type(self) -> Any:
+    def python_type(self) -> type[Any]:
         """
         Returns the data type of the field associated with this change.
         """
-
         model = audit_model_registry.from_table_name(self.field.table.table_name).table_model
 
-        annotations = model.__annotations__.get(self.field.field_name)
-        if not annotations:
-            return None
-                    
-        inner_type = get_args(annotations)
-        
-        return inner_type[0]
+
+        field = model.__table__.columns.get(self.field_name)
+        if field is None:
+            raise ValueError(f"Field {self.field_name} not found in model {model.__name__}")
+
+        return field.type.python_type

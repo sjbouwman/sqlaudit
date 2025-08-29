@@ -1,12 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any
 
 from sqlalchemy import Column, inspect
 from sqlalchemy.orm import DeclarativeBase, RelationshipProperty
 
 from sqlaudit._internals.logger import logger
 from sqlaudit.exceptions import SQLAuditTableAlreadyRegisteredError
-from sqlaudit.serializer import Serializer
 from sqlaudit.types import SQLAuditOptions
 
 
@@ -37,25 +36,7 @@ def _validate_tracked_fields(
     for field in available_fields:
         if field.name not in tracked_fields:
             continue
-
-        annotations = table_model.__annotations__.get(field.name)
-        if not annotations  :
-            raise ValueError(
-                f"Field '{field.name}' is not annotated in the model {table_model.__name__}."
-            )
         
-        try:
-            inner_type = get_args(annotations)[0]
-        except IndexError:
-            raise ValueError(
-                "Field %r in model %s is not a valid type. Could not determine inner type. Outer type is %r"
-                % (field.name, table_model.__name__, get_args(annotations))
-            )
-
-        if not Serializer.has_handler(inner_type):
-            raise ValueError(
-                f"Field '{field.name}' in model {table_model.__name__} is of type {inner_type} which is not a known type. Please register a serializer for this type using `Serializer.register_custom_handler()`."
-            )
 
     if tracked_fields and trackable_fields is None:
         raise ValueError(

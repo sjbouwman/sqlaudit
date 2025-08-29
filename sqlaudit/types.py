@@ -39,7 +39,7 @@ class SQLAuditChange(BaseModel):
         Any, Field(description="List of string values after the change")
     ]
 
-    python_type: Annotated[type, Field(description="The Python type of the field", validation_alias="python_type")]
+    python_type: Annotated[Any, Field(description="The Python type of the field", validation_alias="python_type", exclude=True)]
 
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
