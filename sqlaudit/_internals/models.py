@@ -105,13 +105,26 @@ class SQLAuditLogFieldChange(SQLAuditBase):
     @hybrid_property
     def python_type(self) -> type[Any]:
         """
-        Returns the data type of the field associated with this change.
+        Returns the data type of the field associated with this change. If the field is inherited we will return the parent field
         """
         model = audit_model_registry.from_table_name(self.field.table.table_name).table_model
 
-
+        # Direct method:
         field = model.__table__.columns.get(self.field_name)
-        if field is None:
-            raise ValueError(f"Field {self.field_name} not found in model {model.__name__}")
+        if field is not None:
+            return field.type.python_type
 
-        return field.type.python_type
+        # Not found on this table thus we check parent(s)
+        mapper = model.__mapper__
+        for parent in mapper.iterate_to_root():
+            parent_field = parent.columns.get(self.field_name)
+            if parent_field is not None:
+                return parent_field.type.python_type
+            
+        # If we still fail trough here we try to find based on discriminator column
+        discriminator = mapper.polymorphic_on
+        if discriminator is not None and discriminator.key == self.field_name:
+            return discriminator.type.python_type
+            
+
+        raise ValueError(f"Could not resolve field {self.field_name} on model {model.__name__} or its parents")
